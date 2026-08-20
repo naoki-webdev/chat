@@ -1,0 +1,176 @@
+import { expect, test } from '@playwright/test'
+
+test('logs in and sends a realtime chat message', async ({ page }) => {
+  const body = `playwright-${Date.now()}`
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'チームにログイン' })).toBeVisible()
+  await page.getByLabel('メールアドレス').fill('demo@example.com')
+  await page.getByLabel('パスワード').fill('demo-password')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+  await expect(page.locator('.connection-pill')).toContainText(/接続済み|再接続中/)
+
+  const composer = page.getByPlaceholder('#design-systemにメッセージを送信')
+  await composer.fill(body)
+  await composer.press('Enter')
+  await expect(page.getByText(body)).toBeVisible()
+})
+
+test('can switch channels and mark the selected channel as read', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await page.getByRole('button', { name: /frontend/ }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'frontend', exact: true })).toBeVisible()
+  await expect(page.getByText('APIレスポンスの型定義、shared/typesに置いておくと使いやすそうです。')).toBeVisible()
+})
+
+test('Orbit AI streams a response in its DM', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Orbit AI' }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Orbit AI', exact: true })).toBeVisible()
+
+  const composer = page.getByPlaceholder('@Orbit AIにメッセージを送信')
+  await composer.fill('今日の会話をまとめて')
+  await composer.press('Enter')
+  await expect(page.getByText('Orbit AI（デモ）', { exact: false }).first()).toBeVisible({ timeout: 10000 })
+})
+
+test('AI Work Summary organizes the current conversation', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  const summary = page.getByRole('region', { name: '会話の要点' })
+  await expect(summary).toContainText('会話の要点')
+  await summary.getByRole('button', { name: '会話をまとめる' }).click()
+  await expect(summary).toContainText('会話', { timeout: 10000 })
+  await expect(summary.getByRole('button', { name: '要点を更新' })).toBeVisible()
+})
+
+test('does not apply a stale summary after switching channels', async ({ page }) => {
+  await page.route('**/api/channels/design-system/summary', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          channel_id: 'design-system',
+          generated_at: new Date().toISOString(),
+          scope: 'recent',
+          message_count: 1,
+          unread_count: 0,
+          summary: 'design-systemの古い要約',
+          decisions: [],
+          action_items: [],
+          unresolved: [],
+          chatter_count: 0,
+          source_message_ids: [],
+        }),
+      })
+    } catch {
+      // The request may have been aborted when the channel changed.
+    }
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  const summary = page.getByRole('region', { name: '会話の要点' })
+  await Promise.all([
+    page.waitForRequest('**/api/channels/design-system/summary'),
+    summary.getByRole('button', { name: '会話をまとめる' }).click(),
+  ])
+  await page.getByRole('button', { name: /frontend/ }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'frontend', exact: true })).toBeVisible()
+  await page.waitForTimeout(850)
+
+  await expect(page.getByRole('region', { name: '会話の要点' })).not.toContainText('design-systemの古い要約')
+})
+
+test('can open a thread and add a persistent reaction', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await expect(page.locator('.message-row').first()).toBeVisible()
+  await page.waitForTimeout(250)
+  const firstMessage = page.locator('.message-row').first()
+  await firstMessage.hover()
+  await firstMessage.locator('.message-actions button[aria-label="いいね"]').click()
+  await expect(page.locator('.reaction-active').first()).toBeVisible()
+
+  await page.getByRole('button', { name: /返信/ }).first().click()
+  await expect(page.getByText('返信', { exact: true })).toBeVisible()
+  const reply = page.getByPlaceholder('スレッドに返信')
+  await reply.fill(`thread-${Date.now()}`)
+  await reply.press('Enter')
+  await expect(page.locator('.thread-replies')).toContainText('thread-')
+})
+
+test('quick links and conversation search open real workspace views', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await page.getByRole('button', { name: /^受信トレイ/ }).click()
+  await expect(page.getByRole('dialog', { name: '受信トレイ' })).toBeVisible()
+  await expect(page.getByText('未読のある会話をまとめています。')).toBeVisible()
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+
+  const firstMessage = page.locator('.message-row').first()
+  await firstMessage.hover()
+  await firstMessage.locator('button[aria-label="保存"]').click()
+  await page.getByRole('button', { name: /^保存済み/ }).click()
+  await expect(page.getByRole('dialog', { name: '保存済み' })).toContainText('新しいカラートークンをまとめました。')
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+
+  await page.getByRole('button', { name: /^スレッド/ }).click()
+  await expect(page.getByRole('dialog', { name: 'スレッド' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'スレッド' })).toContainText('件の返信')
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+
+  await page.getByRole('button', { name: '会話を検索' }).click()
+  await page.getByPlaceholder('チャンネルやメンバーを検索').fill('frontend')
+  await page.getByRole('button', { name: /^# frontend/ }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'frontend', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'ワークスペース設定' }).click()
+  await expect(page.getByRole('dialog', { name: 'ワークスペース設定' })).toContainText('Lumen Labs')
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+  await page.getByRole('button', { name: 'ヘルプ' }).click()
+  await expect(page.getByRole('dialog', { name: 'ヘルプ' })).toContainText('Ctrl + K')
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+
+  await page.getByRole('button', { name: '個別メッセージを探す' }).click()
+  await expect(page.getByRole('dialog', { name: '会話を検索' })).toBeVisible()
+  await page.getByRole('button', { name: '閉じる', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: 'ワークスペースを追加' })).toBeDisabled()
+  await page.getByRole('button', { name: 'frontend' }).click()
+  await page.getByRole('button', { name: 'Orbitホーム' }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'general', exact: true })).toBeVisible()
+})
+
+test('DM details show the actual conversation participants', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await page.getByRole('button', { name: /Orbit AI/ }).click()
+  await expect(page.getByRole('heading', { name: '会話の詳細' })).toBeVisible()
+  const details = page.locator('.details-panel')
+  const detailMembers = details.locator('.member-list')
+  await expect(detailMembers.getByText('Orbit AI', { exact: true })).toBeVisible()
+  await expect(detailMembers.getByText('Naoki Sato', { exact: true })).toBeVisible()
+  await expect(detailMembers.getByText('Ayaka Mori', { exact: true })).toHaveCount(0)
+  await expect(detailMembers.getByText('Ken Ito', { exact: true })).toHaveCount(0)
+})

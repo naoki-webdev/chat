@@ -1,0 +1,166 @@
+brand:
+  authEyebrow: "ORBIT リアルタイムチャット"
+  workspaceEyebrow: ワークスペース
+  workspaceName: Lumen Labs
+sidebar:
+  home: Orbitホーム
+  addWorkspace: ワークスペースを追加
+  addWorkspaceTitle: ワークスペース追加は準備中
+  addChannel: "{group}にチャンネルを追加"
+  help: ヘルプ
+  settings: ワークスペース設定
+  jumpToConversation: 会話を検索
+  quickLinks: クイックリンク
+  inbox: 受信トレイ
+  saved: 保存済み
+  threads: スレッド
+  directMessages: 個別メッセージ
+  searchDirectMessages: 個別メッセージを探す
+  searchDirectMessagesTitle: 既存の個別メッセージを検索
+  logout: ログアウト
+  groups:
+    Engineering: 開発
+    Product: プロダクト
+  presence:
+    online: オンライン
+    away: 離席中
+auth:
+  loginTitle: チームにログイン
+  registerTitle: アカウントを作成
+  description: チームの会話をリアルタイムで共有できるチャットです。
+  name: 名前
+  email: メールアドレス
+  password: パスワード
+  submitLogin: ログイン
+  submitRegister: 登録して始める
+  connecting: 接続中…
+  switchToRegister: アカウントを新しく作る
+  switchToLogin: ログインに戻る
+  demo: "デモ: demo@example.com / demo-password"
+  namePlaceholder: Naoki Sato
+  emailPlaceholder: you@example.com
+chat:
+  searchPlaceholder: この会話を検索
+  closeSearch: 検索を閉じる
+  searchMessages: メッセージを検索
+  connectionTitle: リアルタイム接続の状態
+  connected: 接続済み
+  reconnecting: 再接続中
+  showMembers: メンバーを表示
+  loadOlder: 過去のメッセージを読み込む
+  loading: 読み込み中…
+  searchResult: "{count}件のメッセージが見つかりました"
+  noMessages: まだメッセージがありません
+  firstMessage: 最初のメッセージを送ってみましょう。
+  welcomeChannel: "#{name} へようこそ"
+  welcomeConversation: "{name}との会話"
+  directMessageFallback: 個別メッセージ
+  startConversation: ここから会話を始めましょう。
+  privateConversation: ここはあなたとこのメンバーだけの会話です。
+  typing: "{name}が入力中…"
+  aiAnswering: Orbit AIが回答中
+  mine: あなた
+  edited: (編集済み)
+  addReaction: リアクションを追加
+  like: いいね
+  heart: ハート
+  removeSaved: 保存を解除
+  save: 保存
+  edit: 編集
+  delete: 削除
+  replies: "{count}件の返信"
+  reply: 返信する
+  sendPlaceholder: "{prefix}{name}にメッセージを送信"
+  editing: メッセージを編集中
+  cancel: キャンセル
+  saveEdit: 編集を保存
+  send: 送信
+  sendWithEnter: Enterキーで送信
+  newlineWithShiftEnter: Shift + Enterキーで改行
+details:
+  eyebrow: 会話
+  channelTitle: チャンネル情報
+  conversationTitle: 会話の詳細
+  close: 詳細を閉じる
+  directDescription: 個別の会話
+  summary:
+    ariaLabel: 会話の要点
+    eyebrow: 会話の要点
+    heading: 会話の要点
+    unreadCount: "未読 {count}件"
+    unreadAnalyzedCount: "要約対象 {count}件"
+    analyzedCount: "対象 {count}件"
+    empty: 会話をまとめると、決まったことや次の作業を確認できます。
+    loading: 会話をまとめています…
+    decisions: 決定事項
+    actions: 依頼・次の作業
+    unresolved: 未解決
+    none: 該当なし
+    chatterLabel: 雑談
+    chatterCount: "{count}件"
+    update: 要点を更新
+    summarize: 会話をまとめる
+  members: メンバー
+  roles:
+    productDesigner: プロダクトデザイナー
+    frontendEngineer: フロントエンドエンジニア
+    productEngineer: プロダクトエンジニア
+    backendEngineer: バックエンドエンジニア
+    aiAssistant: AIアシスタント
+    member: メンバー
+  noUnread: 未読なし
+  liveSync: リアルタイム同期中
+channel:
+  newDescription: 新しく作成したチャンネル
+overlay:
+  titles:
+    inbox: 受信トレイ
+    saved: 保存済み
+    threads: スレッド
+    workspace: ワークスペース設定
+    help: ヘルプ
+  searchTitle: 会話を検索
+  searchDialog: 会話を検索
+  close: 閉じる
+  searchPlaceholder: チャンネルやメンバーを検索
+  searchHint: チャンネル、個別メッセージを選択できます。Escで閉じる
+  noResults: 一致する会話がありません
+  directMessageType: 個別メッセージ
+  workspaceDescription: チームのリアルタイムチャット
+  conversationCount: 会話
+  memberCount: メンバー
+  connectionState: 接続状態
+  workspaceHint: このワークスペースのチャンネルと個別メッセージは左サイドバーから選択できます。
+  helpSearch: 会話を検索
+  helpClose: ダイアログを閉じる
+  helpSend: メッセージを送信
+  helpNewline: 改行
+  helpDescription: Orbitでは、チャンネルや個別メッセージでリアルタイムに会話できます。
+  unreadHint: 未読のある会話をまとめています。
+  allRead: 未読メッセージはありません
+  openUnread: 未読メッセージを開く
+  savedHint: あとで確認したいメッセージです。
+  noSaved: 保存したメッセージはありません。メッセージのブックマークから保存できます。
+  threadsHint: 返信のあるメッセージをまとめています。
+  noThreads: まだスレッドはありません
+thread:
+  eyebrow: スレッド
+  title: 返信
+  close: スレッドを閉じる
+  loading: 読み込み中…
+  empty: まだ返信はありません
+  placeholder: スレッドに返信
+  send: 返信を送信
+errors:
+  backendUnavailable: サーバーに接続できないため、変更操作を一時停止しています。
+  apiUnavailable: APIに接続できませんでした。Goサーバーを起動してください。
+  readState: 既読状態を保存できませんでした。
+  summary: 会話の要点を取得できませんでした。時間をおいてもう一度お試しください。
+  sourceMissing: 元メッセージが現在の履歴にありません。過去のメッセージを読み込んでください。
+  replySend: 返信の送信に失敗しました。
+  messageSend: メッセージの送信に失敗しました。
+  messageEdit: メッセージの編集に失敗しました。
+  messageDelete: メッセージの削除に失敗しました。
+  reactionUpdate: リアクションの更新に失敗しました。
+  aiFailed: Orbit AIの応答に失敗しました。
+  channelCreate: チャンネルの作成に失敗しました。

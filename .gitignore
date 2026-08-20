@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+backend/bin/
+test-screenshot*.png
+playwright-report/
+test-results/
