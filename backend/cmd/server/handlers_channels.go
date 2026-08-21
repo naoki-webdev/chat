@@ -41,7 +41,7 @@ func (s *server) handleChannelRoutes(writer http.ResponseWriter, request *http.R
 		return
 	}
 	segments := strings.Split(strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/channels/"), "/"), "/")
-	if len(segments) != 2 || (segments[1] != "messages" && segments[1] != "read" && segments[1] != "summary") {
+	if len(segments) == 0 || len(segments) > 2 || (len(segments) == 2 && segments[1] != "messages" && segments[1] != "read" && segments[1] != "summary" && segments[1] != "members") {
 		http.NotFound(writer, request)
 		return
 	}
@@ -56,6 +56,36 @@ func (s *server) handleChannelRoutes(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if !s.requireChannelMember(writer, request, user, channelID) {
+		return
+	}
+	if len(segments) == 1 {
+		if request.Method != http.MethodPatch {
+			methodNotAllowed(writer)
+			return
+		}
+		var payload channelUpdateRequest
+		if !decodeJSON(writer, request, &payload) {
+			return
+		}
+		channel, err := s.repository.UpdateChannel(request.Context(), channelID, user.ID, payload)
+		if err != nil {
+			writeRepositoryError(writer, err)
+			return
+		}
+		writeJSON(writer, http.StatusOK, channel)
+		return
+	}
+	if segments[1] == "members" {
+		if request.Method != http.MethodGet {
+			methodNotAllowed(writer)
+			return
+		}
+		members, err := s.repository.ListChannelMembers(request.Context(), channelID)
+		if err != nil {
+			writeRepositoryError(writer, err)
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{"members": members})
 		return
 	}
 	if segments[1] == "read" {

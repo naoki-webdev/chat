@@ -24,6 +24,7 @@ const (
 	maxChannelGroupLength  = 64
 	maxChannelKindLength   = 32
 	maxChannelDescription  = 500
+	maxChannelMembers      = 100
 	maxUserNameLength      = 80
 	maxReactionLength      = 32
 	maxJSONBodyBytes       = 128 << 10
@@ -79,6 +80,51 @@ func validateChannelRequest(request channelRequest) error {
 	if utf8.RuneCountInString(strings.TrimSpace(request.Description)) > maxChannelDescription {
 		return invalidInput("description must be %d characters or fewer", maxChannelDescription)
 	}
+	if err := validateChannelMemberIDs(request.MemberIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateChannelMemberIDs(memberIDs []string) error {
+	if len(memberIDs) > maxChannelMembers {
+		return invalidInput("member_ids must contain %d users or fewer", maxChannelMembers)
+	}
+	seenMembers := make(map[string]struct{}, len(memberIDs))
+	for _, memberID := range memberIDs {
+		memberID = strings.TrimSpace(memberID)
+		if memberID == "" {
+			return invalidInput("member_ids contains an empty user id")
+		}
+		if _, exists := seenMembers[memberID]; exists {
+			return invalidInput("member_ids must not contain duplicates")
+		}
+		seenMembers[memberID] = struct{}{}
+	}
+	return nil
+}
+
+type channelUpdateRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	MemberIDs   []string `json:"member_ids,omitempty"`
+}
+
+func validateChannelUpdateRequest(request channelUpdateRequest) error {
+	if strings.TrimSpace(request.Name) == "" {
+		return invalidInput("name is required")
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(request.Name)) > maxChannelNameLength {
+		return invalidInput("name must be %d characters or fewer", maxChannelNameLength)
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(request.Description)) > maxChannelDescription {
+		return invalidInput("description must be %d characters or fewer", maxChannelDescription)
+	}
+	if request.MemberIDs != nil {
+		if err := validateChannelMemberIDs(request.MemberIDs); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -103,6 +149,20 @@ type User struct {
 	Initials string `json:"initials"`
 	Color    string `json:"color"`
 	IsBot    bool   `json:"is_bot,omitempty"`
+}
+
+type PublicUser struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Handle   string `json:"handle"`
+	Initials string `json:"initials"`
+	Color    string `json:"color"`
+}
+
+type ChannelMember struct {
+	PublicUser
+	Role  string `json:"role"`
+	IsBot bool   `json:"is_bot,omitempty"`
 }
 
 type userRecord struct {
@@ -154,10 +214,11 @@ type reactionRequest struct {
 }
 
 type channelRequest struct {
-	Name        string `json:"name"`
-	Group       string `json:"group"`
-	Kind        string `json:"kind"`
-	Description string `json:"description"`
+	Name        string   `json:"name"`
+	Group       string   `json:"group"`
+	Kind        string   `json:"kind"`
+	Description string   `json:"description"`
+	MemberIDs   []string `json:"member_ids,omitempty"`
 }
 
 type updateMessageRequest struct {
@@ -232,12 +293,15 @@ func cursorString(value int64) string {
 
 type repository interface {
 	Close()
+	ListUsers(context.Context) ([]PublicUser, error)
+	ListChannelMembers(context.Context, string) ([]ChannelMember, error)
 	ListChannels(context.Context, string) ([]Channel, int64, error)
 	HasChannel(context.Context, string) (bool, error)
 	IsChannelMember(context.Context, string, string) (bool, error)
 	ListChannelMemberIDs(context.Context, string) (map[string]struct{}, error)
 	ChannelIDForMessage(context.Context, string) (string, error)
 	CreateChannel(context.Context, string, channelRequest) (Channel, error)
+	UpdateChannel(context.Context, string, string, channelUpdateRequest) (Channel, error)
 	MarkChannelRead(context.Context, string, string) (int64, error)
 	ListMessagePage(context.Context, string, string, int) (MessagePage, error)
 	ListAIContextMessages(context.Context, string, int) ([]Message, error)

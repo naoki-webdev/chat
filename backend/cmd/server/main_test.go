@@ -422,7 +422,7 @@ func TestReadCursorSurvivesReadMessageDeletion(t *testing.T) {
 func TestCreateChannel(t *testing.T) {
 	server := newServer()
 	cookie := registerTestUser(t, server.handler(), "channel@example.com")
-	payload, _ := json.Marshal(channelRequest{Name: "new-room", Group: "Product", Description: "created in test"})
+	payload, _ := json.Marshal(channelRequest{Name: "new-room", Group: "Product", Description: "created in test", MemberIDs: []string{"u-ayaka"}})
 	request := authorizedRequest(http.MethodPost, "/api/channels", payload, cookie)
 	recorder := httptest.NewRecorder()
 	server.handler().ServeHTTP(recorder, request)
@@ -435,6 +435,57 @@ func TestCreateChannel(t *testing.T) {
 	}
 	if channel.ID != "new-room" || channel.Name != "new-room" {
 		t.Fatalf("unexpected channel: %+v", channel)
+	}
+	member, err := server.repository.IsChannelMember(context.Background(), "u-ayaka", channel.ID)
+	if err != nil {
+		t.Fatalf("check invited member: %v", err)
+	}
+	if !member {
+		t.Fatal("selected member was not added to the channel")
+	}
+}
+
+func TestChannelMembersAndOwnerUpdate(t *testing.T) {
+	server := newServer()
+	handler := server.handler()
+	ownerCookie := loginTestUser(t, handler, "demo@example.com")
+
+	membersRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(membersRecorder, authorizedRequest(http.MethodGet, "/api/channels/design-system/members", nil, ownerCookie))
+	if membersRecorder.Code != http.StatusOK {
+		t.Fatalf("list channel members status = %d", membersRecorder.Code)
+	}
+	var membersResponse struct {
+		Members []ChannelMember `json:"members"`
+	}
+	if err := json.NewDecoder(membersRecorder.Body).Decode(&membersResponse); err != nil {
+		t.Fatal(err)
+	}
+	if len(membersResponse.Members) != 5 {
+		t.Fatalf("member count = %d, want 5", len(membersResponse.Members))
+	}
+
+	payload, _ := json.Marshal(channelUpdateRequest{Name: "design-system", Description: "updated channel description", MemberIDs: []string{"u-ayaka"}})
+	updateRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(updateRecorder, authorizedRequest(http.MethodPatch, "/api/channels/design-system", payload, ownerCookie))
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("update channel status = %d, body = %s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	if member, err := server.repository.IsChannelMember(context.Background(), "u-ayaka", "design-system"); err != nil || !member {
+		t.Fatalf("added member = %v, err = %v", member, err)
+	}
+	if member, err := server.repository.IsChannelMember(context.Background(), "u-ken", "design-system"); err != nil || member {
+		t.Fatalf("removed member = %v, err = %v", member, err)
+	}
+	if member, err := server.repository.IsChannelMember(context.Background(), orbitAIUserID, "design-system"); err != nil || !member {
+		t.Fatalf("Orbit AI membership = %v, err = %v", member, err)
+	}
+
+	memberCookie := loginTestUser(t, handler, "ayaka@example.com")
+	forbiddenRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(forbiddenRecorder, authorizedRequest(http.MethodPatch, "/api/channels/design-system", payload, memberCookie))
+	if forbiddenRecorder.Code != http.StatusForbidden {
+		t.Fatalf("member update status = %d, want %d", forbiddenRecorder.Code, http.StatusForbidden)
 	}
 }
 

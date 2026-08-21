@@ -84,6 +84,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/api/auth/login", s.handleLogin)
 	mux.HandleFunc("/api/auth/logout", s.handleLogout)
 	mux.HandleFunc("/api/auth/me", s.handleCurrentUser)
+	mux.HandleFunc("/api/users", s.handleUsers)
 	mux.HandleFunc("/api/channels", s.handleChannels)
 	mux.HandleFunc("/api/channels/", s.handleChannelRoutes)
 	mux.HandleFunc("/api/events", s.handleEvents)

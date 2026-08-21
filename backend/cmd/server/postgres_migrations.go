@@ -80,6 +80,7 @@ func (r *postgresRepository) seed(ctx context.Context) error {
 		{"u-naoki", "Taro Tanaka", "demo@example.com", "taro", "TT", "linear-gradient(135deg, #f3a683, #c56cf0)", false},
 		{"u-ayaka", "Ayaka Mori", "ayaka@example.com", "ayaka", "AM", "linear-gradient(135deg, #f8c291, #e55039)", false},
 		{"u-ken", "Ken Ito", "ken@example.com", "ken", "KI", "linear-gradient(135deg, #82ccdd, #60a3bc)", false},
+		{"u-mio", "Mio Tanaka", "mio@example.com", "mio", "MT", "linear-gradient(135deg, #b8e994, #78e08f)", false},
 		{orbitAIUserID, "Orbit AI", "orbit-ai@local", "orbit-ai", "✦", "linear-gradient(135deg, #8b5cf6, #22d3ee)", true},
 	}
 	for _, seedUser := range seedUsers {
@@ -98,13 +99,17 @@ func (r *postgresRepository) seed(ctx context.Context) error {
 		}
 	}
 	addMembership := func(channelID, userID, role string) error {
-		_, err := r.pool.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,$3) ON CONFLICT (channel_id,user_id) DO NOTHING`, channelID, userID, role)
+		_, err := r.pool.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,$3) ON CONFLICT (channel_id,user_id) DO UPDATE SET role=EXCLUDED.role`, channelID, userID, role)
 		return err
 	}
 	for _, channel := range seededChannels() {
 		if channel.Kind == "channel" {
-			for _, userID := range []string{"u-naoki", "u-ayaka", "u-ken", orbitAIUserID} {
-				if err := addMembership(channel.ID, userID, "member"); err != nil {
+			for _, userID := range []string{"u-naoki", "u-ayaka", "u-ken", "u-mio", orbitAIUserID} {
+				role := "member"
+				if userID == "u-naoki" {
+					role = "owner"
+				}
+				if err := addMembership(channel.ID, userID, role); err != nil {
 					return err
 				}
 			}

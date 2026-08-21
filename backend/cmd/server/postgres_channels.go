@@ -125,6 +125,77 @@ func (r *postgresRepository) CreateChannel(ctx context.Context, userID string, r
 			return Channel{}, err
 		}
 	}
+	for _, memberID := range request.MemberIDs {
+		var available bool
+		if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND is_bot=false)`, memberID).Scan(&available); err != nil {
+			return Channel{}, err
+		}
+		if !available {
+			return Channel{}, invalidInput("member_ids contains an unavailable user")
+		}
+		if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channel.ID, memberID); err != nil {
+			return Channel{}, err
+		}
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return Channel{}, err
+	}
+	return channel, nil
+}
+
+func (r *postgresRepository) UpdateChannel(ctx context.Context, channelID, userID string, request channelUpdateRequest) (Channel, error) {
+	if err := validateChannelUpdateRequest(request); err != nil {
+		return Channel{}, err
+	}
+	transaction, err := r.pool.Begin(ctx)
+	if err != nil {
+		return Channel{}, err
+	}
+	defer transaction.Rollback(ctx)
+	var channel Channel
+	err = transaction.QueryRow(ctx, `
+UPDATE channels c
+SET name=$1, description=$2
+FROM channel_members cm
+WHERE c.id=$3 AND cm.channel_id=c.id AND cm.user_id=$4 AND cm.role IN ('owner','admin')
+RETURNING c.id,c.name,c.channel_group,c.kind,c.description`, strings.TrimSpace(request.Name), strings.TrimSpace(request.Description), channelID, userID).Scan(&channel.ID, &channel.Name, &channel.Group, &channel.Kind, &channel.Description)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var exists bool
+		if existsErr := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM channels WHERE id=$1)`, channelID).Scan(&exists); existsErr != nil {
+			return Channel{}, existsErr
+		}
+		if !exists {
+			return Channel{}, ErrNotFound
+		}
+		return Channel{}, ErrForbidden
+	}
+	if err != nil {
+		return Channel{}, err
+	}
+	if request.MemberIDs != nil {
+		for _, memberID := range request.MemberIDs {
+			var available bool
+			if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND is_bot=false)`, memberID).Scan(&available); err != nil {
+				return Channel{}, err
+			}
+			if !available {
+				return Channel{}, invalidInput("member_ids contains an unavailable user")
+			}
+		}
+		if _, err := transaction.Exec(ctx, `DELETE FROM channel_members WHERE channel_id=$1 AND role='member' AND user_id<>$3 AND NOT (user_id=ANY($2::text[]))`, channelID, request.MemberIDs, orbitAIUserID); err != nil {
+			return Channel{}, err
+		}
+		for _, memberID := range request.MemberIDs {
+			if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channelID, memberID); err != nil {
+				return Channel{}, err
+			}
+		}
+		if channel.Kind == "channel" {
+			if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channelID, orbitAIUserID); err != nil {
+				return Channel{}, err
+			}
+		}
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Channel{}, err
 	}

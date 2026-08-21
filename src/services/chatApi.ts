@@ -21,6 +21,13 @@ export type ApiUser = {
   color: string
 }
 
+export type ApiMember = Omit<ApiUser, 'email'>
+
+export type ApiChannelMember = ApiMember & {
+  role: 'owner' | 'admin' | 'member'
+  is_bot?: boolean
+}
+
 export type ApiReaction = {
   emoji: string
   count: number
@@ -94,6 +101,8 @@ export type EventPage = {
 }
 
 export type ChannelResponse = { channels: ApiChannel[]; cursor: number }
+type MemberResponse = { users: ApiMember[] }
+type ChannelMemberResponse = { members: ApiChannelMember[] }
 type UserResponse = { user: ApiUser }
 
 export class ChatApiError extends Error {
@@ -167,9 +176,24 @@ export const chatApi = {
     return request<ChannelResponse>('/api/channels')
   },
 
-  async createChannel(payload: Pick<ApiChannel, 'name' | 'group' | 'kind' | 'description'>) {
+  async listUsers() {
+    return request<MemberResponse>('/api/users')
+  },
+
+  async listChannelMembers(channelId: string) {
+    return request<ChannelMemberResponse>(`/api/channels/${encodeURIComponent(channelId)}/members`)
+  },
+
+  async createChannel(payload: Pick<ApiChannel, 'name' | 'group' | 'kind' | 'description'> & { member_ids?: string[] }) {
     return request<ApiChannel>('/api/channels', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async updateChannel(channelId: string, payload: { name: string; description: string; member_ids: string[] }) {
+    return request<ApiChannel>(`/api/channels/${encodeURIComponent(channelId)}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     })
   },

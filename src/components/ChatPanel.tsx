@@ -8,7 +8,6 @@ type Props = {
   selectedChannel: Channel
   visibleMessages: Message[]
   currentUser: ApiUser
-  connection: 'connected' | 'reconnecting'
   backendAvailable: boolean
   errorMessage?: string
   searchOpen: boolean
@@ -26,6 +25,7 @@ type Props = {
   onSearchOpenChange: (open: boolean) => void
   onSearchQueryChange: (query: string) => void
   onToggleDetails: () => void
+  onOpenChannelEdit: () => void
   onToggleReaction: (messageId: string, emoji: string) => void
   savedMessageIds: Set<string>
   onToggleSaved: (messageId: string) => void
@@ -40,15 +40,15 @@ type Props = {
   onCancelEditing: () => void
 }
 
-export function ChatPanel({ selectedChannel, visibleMessages, currentUser, connection, backendAvailable, errorMessage, searchOpen, searchQuery, showDetails, editingId, draft, editDraft, messageListRef, messageElementsRef, highlightedMessageId, hasMore, loadingOlder, onLoadOlder, onSearchOpenChange, onSearchQueryChange, onToggleDetails, onToggleReaction, savedMessageIds, onToggleSaved, onOpenThread, typingLabel, onStartEditing, onDeleteMessage, onDraftChange, onEditDraftChange, onComposerKeyDown, onSubmit, onCancelEditing }: Props) {
+export function ChatPanel({ selectedChannel, visibleMessages, currentUser, backendAvailable, errorMessage, searchOpen, searchQuery, showDetails, editingId, draft, editDraft, messageListRef, messageElementsRef, highlightedMessageId, hasMore, loadingOlder, onLoadOlder, onSearchOpenChange, onSearchQueryChange, onToggleDetails, onOpenChannelEdit, onToggleReaction, savedMessageIds, onToggleSaved, onOpenThread, typingLabel, onStartEditing, onDeleteMessage, onDraftChange, onEditDraftChange, onComposerKeyDown, onSubmit, onCancelEditing }: Props) {
   return <main className={`chat-panel ${showDetails ? 'chat-panel-with-details' : ''}`}>
     <header className="chat-header">
       <div className="channel-title"><span className="channel-title-icon">{selectedChannel.kind === 'channel' ? '#' : '@'}</span><div><h2>{selectedChannel.name}</h2><p>{selectedChannel.description ?? t('chat.directMessageFallback')}</p></div></div>
       <div className="header-actions">
         {searchOpen && <div className="header-search"><Icon name="search" size={16} /><input autoFocus value={searchQuery} onChange={(event) => onSearchQueryChange(event.target.value)} placeholder={t('chat.searchPlaceholder')} /><button onClick={() => { onSearchQueryChange(''); onSearchOpenChange(false) }} aria-label={t('chat.closeSearch')}>×</button></div>}
-        <div className={`connection-pill ${connection}`} role="status" aria-live="polite" title={t('chat.connectionTitle')}><span className="connection-dot" />{connection === 'connected' ? t('chat.connected') : t('chat.reconnecting')}</div>
         <button className="header-icon-button" onClick={() => onSearchOpenChange(!searchOpen)} aria-label={t('chat.searchMessages')}><Icon name="search" size={18} /></button>
         <button className="header-icon-button" onClick={onToggleDetails} aria-label={t('chat.showMembers')}><Icon name="members" size={19} /></button>
+        {selectedChannel.kind === 'channel' && <button className="header-icon-button" onClick={onOpenChannelEdit} aria-label={t('chat.editChannel')}><Icon name="settings" size={18} /></button>}
       </div>
     </header>
     <div className="message-list" ref={messageListRef}>

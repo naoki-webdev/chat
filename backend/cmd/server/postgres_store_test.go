@@ -46,7 +46,7 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 	}
 	defer repository.Close()
 
-	channel, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-private-" + randomID(), Group: "Product"})
+	channel, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-private-" + randomID(), Group: "Product", MemberIDs: []string{"u-ken"}})
 	if err != nil {
 		t.Fatalf("create private channel: %v", err)
 	}
@@ -66,6 +66,13 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 	}
 	if otherMember {
 		t.Fatal("uninvited user was added to private channel")
+	}
+	selectedMember, err := repository.IsChannelMember(ctx, "u-ken", channel.ID)
+	if err != nil {
+		t.Fatalf("selected member lookup: %v", err)
+	}
+	if !selectedMember {
+		t.Fatal("selected PostgreSQL member was not added to private channel")
 	}
 
 	application := newServerWithRepository(repository)
@@ -123,6 +130,18 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 		t.Fatalf("owner websocket connection: %v", err)
 	}
 	_ = ownerConnection.Close()
+
+	if _, err := repository.UpdateChannel(ctx, channel.ID, "u-naoki", channelUpdateRequest{Name: channel.Name, Description: channel.Description, MemberIDs: []string{"u-ayaka"}}); err != nil {
+		t.Fatalf("update PostgreSQL channel members: %v", err)
+	}
+	updatedMember, err := repository.IsChannelMember(ctx, "u-ayaka", channel.ID)
+	if err != nil || !updatedMember {
+		t.Fatalf("updated PostgreSQL member = %v, err = %v", updatedMember, err)
+	}
+	removedMember, err := repository.IsChannelMember(ctx, "u-ken", channel.ID)
+	if err != nil || removedMember {
+		t.Fatalf("removed PostgreSQL member = %v, err = %v", removedMember, err)
+	}
 }
 
 func TestPostgresThreadRootDeletionAndLateMembership(t *testing.T) {

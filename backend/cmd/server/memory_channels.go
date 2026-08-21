@@ -85,14 +85,76 @@ func (r *memoryRepository) CreateChannel(_ context.Context, userID string, reque
 	if r.hasChannelLocked(id) {
 		return Channel{}, ErrConflict
 	}
+	for _, memberID := range request.MemberIDs {
+		record, exists := r.users[memberID]
+		if !exists || record.IsBot {
+			return Channel{}, invalidInput("member_ids contains an unavailable user")
+		}
+	}
 	channel := Channel{ID: id, Name: name, Group: group, Kind: kind, Description: strings.TrimSpace(request.Description)}
 	r.channels = append(r.channels, channel)
 	r.messages[id] = []Message{}
 	r.memberships[id] = map[string]string{userID: "owner"}
+	for _, memberID := range request.MemberIDs {
+		if memberID != userID {
+			r.memberships[id][memberID] = "member"
+		}
+	}
 	if kind == "channel" {
 		r.memberships[id][orbitAIUserID] = "member"
 	}
 	return channel, nil
+}
+
+func (r *memoryRepository) UpdateChannel(_ context.Context, channelID, userID string, request channelUpdateRequest) (Channel, error) {
+	if err := validateChannelUpdateRequest(request); err != nil {
+		return Channel{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.hasChannelLocked(channelID) {
+		return Channel{}, ErrNotFound
+	}
+	role := r.memberships[channelID][userID]
+	if role != "owner" && role != "admin" {
+		return Channel{}, ErrForbidden
+	}
+	if request.MemberIDs != nil {
+		for _, memberID := range request.MemberIDs {
+			record, exists := r.users[memberID]
+			if !exists || record.IsBot {
+				return Channel{}, invalidInput("member_ids contains an unavailable user")
+			}
+		}
+		desired := make(map[string]struct{}, len(request.MemberIDs))
+		for _, memberID := range request.MemberIDs {
+			desired[memberID] = struct{}{}
+		}
+		for memberID, memberRole := range r.memberships[channelID] {
+			if memberRole == "owner" || memberRole == "admin" || r.users[memberID].IsBot {
+				desired[memberID] = struct{}{}
+			}
+		}
+		for memberID := range r.memberships[channelID] {
+			if _, keep := desired[memberID]; !keep {
+				delete(r.memberships[channelID], memberID)
+			}
+		}
+		for memberID := range desired {
+			if _, exists := r.memberships[channelID][memberID]; !exists {
+				r.memberships[channelID][memberID] = "member"
+			}
+		}
+	}
+	for index := range r.channels {
+		if r.channels[index].ID != channelID {
+			continue
+		}
+		r.channels[index].Name = strings.TrimSpace(request.Name)
+		r.channels[index].Description = strings.TrimSpace(request.Description)
+		return r.channels[index], nil
+	}
+	return Channel{}, ErrNotFound
 }
 
 func (r *memoryRepository) MarkChannelRead(_ context.Context, userID, channelID string) (int64, error) {
