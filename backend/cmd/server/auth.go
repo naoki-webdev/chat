@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -40,6 +41,18 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+func secureCookiesEnabled() bool {
+	value := strings.TrimSpace(os.Getenv("COOKIE_SECURE"))
+	return strings.EqualFold(value, "true") || value == "1"
+}
+
+func validateCookieConfig() error {
+	if !isLocalEnvironment() && !secureCookiesEnabled() {
+		return errors.New("COOKIE_SECURE must be true outside development and test environments")
+	}
+	return nil
+}
+
 func sessionCookie(token string) *http.Cookie {
 	return &http.Cookie{
 		Name:     sessionCookieName,
@@ -47,7 +60,7 @@ func sessionCookie(token string) *http.Cookie {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true") || os.Getenv("COOKIE_SECURE") == "1",
+		Secure:   secureCookiesEnabled(),
 		MaxAge:   int((7 * 24 * time.Hour) / time.Second),
 	}
 }

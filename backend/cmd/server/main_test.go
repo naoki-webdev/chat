@@ -101,11 +101,61 @@ func TestHealthAndAuthentication(t *testing.T) {
 	}
 }
 
+func TestSeededThreadCountMatchesReplies(t *testing.T) {
+	repository := newMemoryRepository()
+	thread, err := repository.ListThreadPage(context.Background(), "ds-1", "", 50)
+	if err != nil {
+		t.Fatalf("list seeded thread: %v", err)
+	}
+	if len(thread.Messages) != 3 {
+		t.Fatalf("seeded reply count = %d, want 3", len(thread.Messages))
+	}
+	for _, message := range repository.messages["design-system"] {
+		if message.ID == "ds-1" && message.ThreadCount != len(thread.Messages) {
+			t.Fatalf("seeded thread count = %d, want %d", message.ThreadCount, len(thread.Messages))
+		}
+	}
+}
+
 func TestProductionServerRequiresDatabaseURL(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("DATABASE_URL", "")
 	if _, err := newProductionServer(context.Background()); err == nil {
 		t.Fatal("production server should fail when DATABASE_URL is missing")
+	}
+}
+
+func TestProductionRequiresSecureCookies(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("COOKIE_SECURE", "")
+	if err := validateCookieConfig(); err == nil {
+		t.Fatal("production should require secure cookies")
+	}
+
+	t.Setenv("COOKIE_SECURE", "true")
+	if err := validateCookieConfig(); err != nil {
+		t.Fatalf("secure cookie configuration rejected: %v", err)
+	}
+	if !sessionCookie("token").Secure {
+		t.Fatal("session cookie should be secure")
+	}
+}
+
+func TestAuthenticationRateLimit(t *testing.T) {
+	server := newServer()
+	handler := server.handler()
+	payload, _ := json.Marshal(loginRequest{Email: "unknown@example.com", Password: "wrong-password"})
+	for attempt := 0; attempt < authRateLimitMaxAttempts; attempt++ {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(payload)))
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("failed login attempt %d status = %d", attempt+1, recorder.Code)
+		}
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(payload)))
+	if recorder.Code != http.StatusTooManyRequests || recorder.Header().Get("Retry-After") == "" {
+		t.Fatalf("rate limit response = %d, retry-after = %q", recorder.Code, recorder.Header().Get("Retry-After"))
 	}
 }
 

@@ -17,13 +17,14 @@ import (
 )
 
 type server struct {
-	repository repository
-	aiService  ai.Service
-	hub        *hub
-	upgrader   websocket.Upgrader
-	aiMu       sync.Mutex
-	aiInFlight map[string]int
-	aiLastRun  map[string]time.Time
+	repository  repository
+	aiService   ai.Service
+	hub         *hub
+	upgrader    websocket.Upgrader
+	aiMu        sync.Mutex
+	aiInFlight  map[string]int
+	aiLastRun   map[string]time.Time
+	authLimiter *authRateLimiter
 }
 
 func newServer() *server {
@@ -36,11 +37,12 @@ func newServerWithRepository(repository repository) *server {
 
 func newServerWithRepositoryAndAI(repository repository, service ai.Service) *server {
 	return &server{
-		repository: repository,
-		aiService:  service,
-		hub:        newHub(),
-		aiInFlight: make(map[string]int),
-		aiLastRun:  make(map[string]time.Time),
+		repository:  repository,
+		aiService:   service,
+		hub:         newHub(),
+		aiInFlight:  make(map[string]int),
+		aiLastRun:   make(map[string]time.Time),
+		authLimiter: newAuthRateLimiter(),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -57,6 +59,9 @@ func newProductionServer(ctx context.Context) (*server, error) {
 		return nil, errors.New("DATABASE_URL must be set outside development and test environments")
 	}
 	if !isLocalEnvironment() {
+		if err := validateCookieConfig(); err != nil {
+			return nil, err
+		}
 		if err := ai.ValidateProductionConfig(); err != nil {
 			return nil, err
 		}

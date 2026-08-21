@@ -170,7 +170,7 @@ test('DM details show the actual conversation participants', async ({ page }) =>
   const details = page.locator('.details-panel')
   const detailMembers = details.locator('.member-list')
   await expect(detailMembers.getByText('Orbit AI', { exact: true })).toBeVisible()
-  await expect(detailMembers.getByText('Naoki Sato', { exact: true })).toBeVisible()
+  await expect(detailMembers.getByText('Taro Tanaka', { exact: true })).toBeVisible()
   await expect(detailMembers.getByText('Ayaka Mori', { exact: true })).toHaveCount(0)
   await expect(detailMembers.getByText('Ken Ito', { exact: true })).toHaveCount(0)
 })

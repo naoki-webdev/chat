@@ -11,11 +11,17 @@ func (s *server) handleRegister(writer http.ResponseWriter, request *http.Reques
 	if !decodeJSON(writer, request, &payload) {
 		return
 	}
+	keys := authRateLimitKeys(request, payload.Email)
+	if !s.authLimiter.allow(keys...) {
+		writeAuthRateLimitError(writer)
+		return
+	}
 	user, err := s.repository.RegisterUser(request.Context(), payload)
 	if err != nil {
 		writeRepositoryError(writer, err)
 		return
 	}
+	s.authLimiter.reset(keys...)
 	if !s.startSession(writer, request, user) {
 		return
 	}
@@ -31,11 +37,17 @@ func (s *server) handleLogin(writer http.ResponseWriter, request *http.Request) 
 	if !decodeJSON(writer, request, &payload) {
 		return
 	}
+	keys := authRateLimitKeys(request, payload.Email)
+	if !s.authLimiter.allow(keys...) {
+		writeAuthRateLimitError(writer)
+		return
+	}
 	user, err := s.repository.AuthenticateUser(request.Context(), payload.Email, payload.Password)
 	if err != nil {
 		writeError(writer, http.StatusUnauthorized, "email or password is incorrect")
 		return
 	}
+	s.authLimiter.reset(keys...)
 	if !s.startSession(writer, request, user) {
 		return
 	}

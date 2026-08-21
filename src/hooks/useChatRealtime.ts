@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { chatApi, createChatSocket, type ApiUser, type RealtimeEvent } from '../services/chatApi'
-import { fromApiMessage, type Channel, type Message } from '../types/chat'
+import { fromApiMessage, mergeMessage, type Channel, type Message } from '../types/chat'
 import { t } from '../i18n'
 
 type MessageMap = Record<string, Message[]>
@@ -173,7 +173,7 @@ export function useChatRealtime({
       const existing = current[event.channel_id] ?? []
       const index = existing.findIndex((message) => message.id === incoming.id)
       const next = [...existing]
-      if (index >= 0) next[index] = incoming
+      if (index >= 0) next[index] = mergeMessage(existing[index], incoming)
       else next.push(incoming)
       return { ...current, [event.channel_id]: next }
     })

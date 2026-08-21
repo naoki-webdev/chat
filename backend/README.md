@@ -52,7 +52,7 @@ WebSocketは、同じチャンネルに接続しているクライアントへ�
 }
 ```
 
-`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`が必須です。
+`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`と`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。
 
 チャンネルは`channel_members`でアクセス制御します。既定の公開チャンネル（`general`、`frontend`、`design-system`、`roadmap`、`research`）には登録時に参加しますが、ユーザーが作成したチャンネルは作成者とOrbit AIだけが初期メンバーです。新規ユーザーを既存の全チャンネルへ自動参加させることはありません。メッセージ履歴、スレッド、リアクション、イベント差分、チャンネル別WebSocket購読はmembershipを確認してから返します。
 

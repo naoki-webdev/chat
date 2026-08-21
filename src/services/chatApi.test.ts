@@ -66,9 +66,9 @@ describe('chatApi', () => {
   it('uses the thread and reaction endpoints', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ messages: [], has_more: false, cursor: 5 }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Naoki', initials: 'N', color: '#fff', time: '10:00', body: 'root' }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Naoki', initials: 'N', color: '#fff', time: '10:00', body: 'root' }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Naoki', initials: 'N', color: '#fff', time: '10:00', body: 'root' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Taro', initials: 'T', color: '#fff', time: '10:00', body: 'root' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Taro', initials: 'T', color: '#fff', time: '10:00', body: 'root' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'm-1', channel_id: 'general', author: 'Taro', initials: 'T', color: '#fff', time: '10:00', body: 'root' }))
 
     await chatApi.listThreadMessages('m-1')
     await chatApi.addReaction('m-1', '👍')

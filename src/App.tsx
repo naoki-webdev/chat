@@ -7,7 +7,7 @@ import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { WorkspaceOverlay, type SavedMessageRef, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
 import { chatApi, type ApiChannelSummary, type ApiMessage, type ApiUser } from './services/chatApi'
 import { useChatRealtime } from './hooks/useChatRealtime'
-import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, type Channel, type Message } from './types/chat'
+import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, mergeMessage, type Channel, type Message } from './types/chat'
 import { t } from './i18n'
 
 type PaginationState = { nextCursor?: string; hasMore: boolean; loading: boolean }
@@ -319,7 +319,7 @@ function App() {
       const existing = current[remoteMessage.channel_id] ?? []
       const index = existing.findIndex((message) => message.id === incoming.id)
       const next = [...existing]
-      if (index >= 0) next[index] = incoming
+      if (index >= 0) next[index] = mergeMessage(existing[index], incoming)
       else next.push(incoming)
       return { ...current, [remoteMessage.channel_id]: next }
     })

@@ -4,17 +4,17 @@ import "golang.org/x/crypto/bcrypt"
 
 func newMemoryRepository() *memoryRepository {
 	users := map[string]userRecord{
-		"u-naoki":     {User: User{ID: "u-naoki", Name: "Naoki Sato", Email: "demo@example.com", Handle: "naoki", Initials: "NS", Color: "linear-gradient(135deg, #f3a683, #c56cf0)"}, PasswordHash: mustHashPassword("demo-password")},
+		"u-naoki":     {User: User{ID: "u-naoki", Name: "Taro Tanaka", Email: "demo@example.com", Handle: "taro", Initials: "TT", Color: "linear-gradient(135deg, #f3a683, #c56cf0)"}, PasswordHash: mustHashPassword("demo-password")},
 		"u-ayaka":     {User: User{ID: "u-ayaka", Name: "Ayaka Mori", Email: "ayaka@example.com", Handle: "ayaka", Initials: "AM", Color: "linear-gradient(135deg, #f8c291, #e55039)"}, PasswordHash: mustHashPassword("demo-password")},
 		"u-ken":       {User: User{ID: "u-ken", Name: "Ken Ito", Email: "ken@example.com", Handle: "ken", Initials: "KI", Color: "linear-gradient(135deg, #82ccdd, #60a3bc)"}, PasswordHash: mustHashPassword("demo-password")},
 		orbitAIUserID: {User: User{ID: orbitAIUserID, Name: "Orbit AI", Email: "orbit-ai@local", Handle: "orbit-ai", Initials: "✦", Color: "linear-gradient(135deg, #8b5cf6, #22d3ee)", IsBot: true}, PasswordHash: mustHashPassword("demo-password")},
 	}
 	return &memoryRepository{
-		sequence:         4,
+		sequence:         7,
 		channels:         seededChannels(),
 		messages:         seededMessages(),
-		messageSequences: map[string]int64{"g-1": 1, "g-2": 2, "f-1": 3, "ds-1": 4},
-		owners:           map[string]string{"g-1": "u-ken", "g-2": "u-naoki", "f-1": "u-ayaka", "ds-1": "u-ayaka"},
+		messageSequences: map[string]int64{"g-1": 1, "g-2": 2, "f-1": 3, "ds-1": 4, "ds-r1": 5, "ds-r2": 6, "ds-r3": 7},
+		owners:           map[string]string{"g-1": "u-ken", "g-2": "u-naoki", "f-1": "u-ayaka", "ds-1": "u-ayaka", "ds-r1": "u-ken", "ds-r2": "u-naoki", "ds-r3": "u-ayaka"},
 		events:           []EventRecord{},
 		readStates:       make(map[string]map[string]int64),
 		readMessageIDs:   make(map[string]map[string]string),
@@ -77,9 +77,9 @@ func seededChannels() []Channel {
 
 func seededMessages() map[string][]Message {
 	return map[string][]Message{
-		"general":       {{ID: "g-1", ChannelID: "general", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "08:30", Body: "おはようございます。今週もよろしくお願いします！", Reactions: []Reaction{{Emoji: "☀️", Count: 5}}}, {ID: "g-2", ChannelID: "general", Author: "Naoki Sato", Initials: "NS", Color: "#c56cf0", Time: "08:33", Body: "おはよう！リアルタイムチャットの初期画面を作り始めます。", Reactions: []Reaction{{Emoji: "🚀", Count: 2}}}},
+		"general":       {{ID: "g-1", ChannelID: "general", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "08:30", Body: "おはようございます。今週もよろしくお願いします！", Reactions: []Reaction{{Emoji: "☀️", Count: 5}}}, {ID: "g-2", ChannelID: "general", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "08:33", Body: "おはよう！リアルタイムチャットの初期画面を作り始めます。", Reactions: []Reaction{{Emoji: "🚀", Count: 2}}}},
 		"frontend":      {{ID: "f-1", ChannelID: "frontend", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "昨日", Body: "APIレスポンスの型定義、shared/typesに置いておくと使いやすそうです。", Reactions: []Reaction{{Emoji: "👍", Count: 3}}}},
-		"design-system": {{ID: "ds-1", ChannelID: "design-system", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "09:42", Body: "新しいカラートークンをまとめました。", Reactions: []Reaction{{Emoji: "✨", Count: 4}}, ThreadCount: 3}},
+		"design-system": {{ID: "ds-1", ChannelID: "design-system", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "09:42", Body: "新しいカラートークンをまとめました。", Reactions: []Reaction{{Emoji: "✨", Count: 4}}, ThreadCount: 3}, {ID: "ds-r1", ChannelID: "design-system", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "09:50", Body: "カードの境界線は、もう少し薄くしてもよさそうです。", ParentMessageID: "ds-1"}, {ID: "ds-r2", ChannelID: "design-system", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "09:55", Body: "了解です。余白とのバランスを見て調整します。", ParentMessageID: "ds-1"}, {ID: "ds-r3", ChannelID: "design-system", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "10:05", Body: "明日のレビューで最終確認しましょう。", ParentMessageID: "ds-1"}},
 		"roadmap":       {}, "research": {}, "ayaka": {}, "ken": {}, "orbit-ai": {},
 	}
 }

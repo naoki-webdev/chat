@@ -37,7 +37,7 @@ auth:
   switchToRegister: アカウントを新しく作る
   switchToLogin: ログインに戻る
   demo: "デモ: demo@example.com / demo-password"
-  namePlaceholder: Naoki Sato
+  namePlaceholder: Taro Tanaka
   emailPlaceholder: you@example.com
 chat:
   searchPlaceholder: この会話を検索

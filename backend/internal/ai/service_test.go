@@ -113,7 +113,7 @@ func TestOpenAIServiceParsesSSEStream(t *testing.T) {
 
 	service := &openAIService{apiKey: "test-key", model: "test-model", baseURL: provider.URL, client: provider.Client()}
 	var chunks []string
-	response, err := service.Stream(context.Background(), []Message{{Author: "Naoki", Body: "Hi"}}, "続けて", func(delta string) error {
+	response, err := service.Stream(context.Background(), []Message{{Author: "Taro", Body: "Hi"}}, "続けて", func(delta string) error {
 		chunks = append(chunks, delta)
 		return nil
 	})
