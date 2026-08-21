@@ -119,8 +119,8 @@ func cloneEventRecord(record EventRecord) EventRecord {
 	return record
 }
 
-func channelIDFromName(name string) string {
-	return strings.ToLower(strings.Join(strings.Fields(name), "-"))
+func newChannelID() string {
+	return "ch-" + randomID()
 }
 
 func handleFromName(name string) string {

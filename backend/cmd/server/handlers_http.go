@@ -22,6 +22,8 @@ func writeRepositoryError(writer http.ResponseWriter, err error) {
 		writeError(writer, http.StatusUnauthorized, "authentication required")
 	case errors.Is(err, ErrForbidden):
 		writeError(writer, http.StatusForbidden, "you can only change your own messages")
+	case errors.Is(err, ErrChannelManageForbidden):
+		writeError(writer, http.StatusForbidden, "you do not have permission to manage this channel")
 	case errors.Is(err, ErrNotMember):
 		writeError(writer, http.StatusForbidden, "you are not a member of this channel")
 	case errors.Is(err, ErrNotFound):

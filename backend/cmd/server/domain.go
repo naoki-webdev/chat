@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	ErrNotFound     = errors.New("resource not found")
-	ErrConflict     = errors.New("resource already exists")
-	ErrForbidden    = errors.New("forbidden")
-	ErrNotMember    = errors.New("not a channel member")
-	ErrUnauthorized = errors.New("invalid credentials")
+	ErrNotFound               = errors.New("resource not found")
+	ErrConflict               = errors.New("resource already exists")
+	ErrForbidden              = errors.New("forbidden")
+	ErrChannelManageForbidden = errors.New("channel management forbidden")
+	ErrNotMember              = errors.New("not a channel member")
+	ErrUnauthorized           = errors.New("invalid credentials")
 )
 
 const (

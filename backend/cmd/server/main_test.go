@@ -433,7 +433,7 @@ func TestCreateChannel(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&channel); err != nil {
 		t.Fatal(err)
 	}
-	if channel.ID != "new-room" || channel.Name != "new-room" {
+	if channel.ID == "" || channel.ID == "new-room" || channel.Name != "new-room" {
 		t.Fatalf("unexpected channel: %+v", channel)
 	}
 	member, err := server.repository.IsChannelMember(context.Background(), "u-ayaka", channel.ID)
@@ -442,6 +442,26 @@ func TestCreateChannel(t *testing.T) {
 	}
 	if !member {
 		t.Fatal("selected member was not added to the channel")
+	}
+
+	renamePayload, _ := json.Marshal(channelUpdateRequest{Name: "team", Description: "renamed in test"})
+	renameRecorder := httptest.NewRecorder()
+	server.handler().ServeHTTP(renameRecorder, authorizedRequest(http.MethodPatch, "/api/channels/"+channel.ID, renamePayload, cookie))
+	if renameRecorder.Code != http.StatusOK {
+		t.Fatalf("rename channel status = %d, body = %s", renameRecorder.Code, renameRecorder.Body.String())
+	}
+	secondPayload, _ := json.Marshal(channelRequest{Name: "new-room", Group: "Product"})
+	secondRecorder := httptest.NewRecorder()
+	server.handler().ServeHTTP(secondRecorder, authorizedRequest(http.MethodPost, "/api/channels", secondPayload, cookie))
+	if secondRecorder.Code != http.StatusCreated {
+		t.Fatalf("create channel after rename status = %d, body = %s", secondRecorder.Code, secondRecorder.Body.String())
+	}
+	var secondChannel Channel
+	if err := json.NewDecoder(secondRecorder.Body).Decode(&secondChannel); err != nil {
+		t.Fatal(err)
+	}
+	if secondChannel.ID == channel.ID {
+		t.Fatalf("renamed channel and new channel share ID: %q", channel.ID)
 	}
 }
 
@@ -486,6 +506,9 @@ func TestChannelMembersAndOwnerUpdate(t *testing.T) {
 	handler.ServeHTTP(forbiddenRecorder, authorizedRequest(http.MethodPatch, "/api/channels/design-system", payload, memberCookie))
 	if forbiddenRecorder.Code != http.StatusForbidden {
 		t.Fatalf("member update status = %d, want %d", forbiddenRecorder.Code, http.StatusForbidden)
+	}
+	if !strings.Contains(forbiddenRecorder.Body.String(), "permission to manage this channel") {
+		t.Fatalf("member update error = %s", forbiddenRecorder.Body.String())
 	}
 }
 

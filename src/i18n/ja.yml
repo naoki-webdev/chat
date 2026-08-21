@@ -117,6 +117,7 @@ details:
     backendEngineer: バックエンドエンジニア
     aiAssistant: AIアシスタント
     owner: オーナー
+    admin: 管理者
     member: メンバー
   noUnread: 未読なし
   liveSync: リアルタイム同期中

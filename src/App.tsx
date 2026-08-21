@@ -101,6 +101,8 @@ function App() {
       color: member.color,
     }))
     : conversationMembers
+  const currentChannelRole = selectedChannelMembers.find((member) => member.id === currentUser.id)?.role ?? 'member'
+  const canEditSelectedChannel = selectedChannel.kind === 'channel' && (currentChannelRole === 'owner' || currentChannelRole === 'admin')
 
   const loadMessages = async (channelId: string, before?: string) => {
     const page = await chatApi.listMessages(channelId, before)
@@ -180,13 +182,18 @@ function App() {
     const loadChannels = async () => {
       if (disposed || loaded) return
       try {
-        const [remote, memberResponse] = await Promise.all([chatApi.listChannels(), chatApi.listUsers()])
+        const remote = await chatApi.listChannels()
         if (disposed) return
         setChannels(remote.channels.map(fromApiChannel))
-        setAvailableMembers(memberResponse.users)
+        setAvailableMembers([])
         advanceEventCursorRef.current(remote.cursor)
         setBackendState('ready')
         loaded = true
+        void chatApi.listUsers().then((memberResponse) => {
+          if (!disposed) setAvailableMembers(memberResponse.users)
+        }).catch(() => {
+          // Member lookup is optional; chat remains usable without the picker data.
+        })
       } catch {
         if (!disposed) setBackendState('unavailable')
       }
@@ -522,8 +529,8 @@ function App() {
     <div className="app-shell">
       <WorkspaceSidebar channels={channels} selectedChannelId={selectedChannelId} currentUser={currentUser} myPresence={myPresence} channelGroups={channelGroups} onSelectChannel={selectChannel} onAddChannel={openChannelCreate} onChangePresence={changePresence} onUpdateProfile={updateProfile} onLogout={() => void logout()} unreadCount={unreadCount} savedCount={savedMessages.length} threadCount={threadCount} onOpenSearch={() => setWorkspaceOverlay('search')} onOpenQuickLink={setWorkspaceOverlay} onOpenWorkspace={() => setWorkspaceOverlay('workspace')} onOpenHelp={() => setWorkspaceOverlay('help')} />
       {channelCreateGroup && <ChannelCreateDialog initialGroup={channelCreateGroup} groups={channelGroups} members={availableMembers} currentUserId={currentUser.id} onCreate={createChannel} onClose={() => setChannelCreateGroup(null)} />}
-      {channelEditOpen && <ChannelEditDialog channel={selectedChannel} members={availableMembers} channelMembers={selectedChannelMembers} currentUserId={currentUser.id} onSave={updateChannel} onClose={() => setChannelEditOpen(false)} />}
-      <ChatPanel selectedChannel={selectedChannel} visibleMessages={visibleMessages} currentUser={currentUser} backendAvailable={backendReady} errorMessage={actionError ?? (backendUnavailable ? backendUnavailableMessage : undefined)} searchOpen={searchOpen} searchQuery={searchQuery} showDetails={showDetails} editingId={editingId} draft={draft} editDraft={editDraft} messageListRef={messageListRef} messageElementsRef={messageElementsRef} highlightedMessageId={highlightedMessageId} hasMore={messagePagination[selectedChannelId]?.hasMore ?? false} loadingOlder={messagePagination[selectedChannelId]?.loading ?? false} onLoadOlder={loadOlderMessages} onSearchOpenChange={setSearchOpen} onSearchQueryChange={setSearchQuery} onToggleDetails={() => setShowDetails((open) => !open)} onOpenChannelEdit={() => setChannelEditOpen(true)} onToggleReaction={toggleReaction} savedMessageIds={savedMessageIds} onToggleSaved={toggleSaved} onOpenThread={(message) => void openThread(message)} typingLabel={typingLabel} onStartEditing={startEditing} onDeleteMessage={(messageId) => void deleteMessage(messageId)} onDraftChange={onDraftChange} onEditDraftChange={setEditDraft} onComposerKeyDown={onComposerKeyDown} onSubmit={() => { if (editingId) void updateMessage(); else void sendMessage() }} onCancelEditing={() => { setEditingId(null); setEditDraft('') }} />
+      {channelEditOpen && <ChannelEditDialog channel={selectedChannel} members={availableMembers} channelMembers={selectedChannelMembers} currentUserId={currentUser.id} currentUserRole={currentChannelRole} onSave={updateChannel} onClose={() => setChannelEditOpen(false)} />}
+      <ChatPanel selectedChannel={selectedChannel} visibleMessages={visibleMessages} currentUser={currentUser} backendAvailable={backendReady} errorMessage={actionError ?? (backendUnavailable ? backendUnavailableMessage : undefined)} searchOpen={searchOpen} searchQuery={searchQuery} showDetails={showDetails} editingId={editingId} draft={draft} editDraft={editDraft} messageListRef={messageListRef} messageElementsRef={messageElementsRef} highlightedMessageId={highlightedMessageId} hasMore={messagePagination[selectedChannelId]?.hasMore ?? false} loadingOlder={messagePagination[selectedChannelId]?.loading ?? false} onLoadOlder={loadOlderMessages} onSearchOpenChange={setSearchOpen} onSearchQueryChange={setSearchQuery} onToggleDetails={() => setShowDetails((open) => !open)} canEditChannel={canEditSelectedChannel} onOpenChannelEdit={() => setChannelEditOpen(true)} onToggleReaction={toggleReaction} savedMessageIds={savedMessageIds} onToggleSaved={toggleSaved} onOpenThread={(message) => void openThread(message)} typingLabel={typingLabel} onStartEditing={startEditing} onDeleteMessage={(messageId) => void deleteMessage(messageId)} onDraftChange={onDraftChange} onEditDraftChange={setEditDraft} onComposerKeyDown={onComposerKeyDown} onSubmit={() => { if (editingId) void updateMessage(); else void sendMessage() }} onCancelEditing={() => { setEditingId(null); setEditDraft('') }} />
       {workspaceOverlay && <WorkspaceOverlay kind={workspaceOverlay} channels={channels} messages={messages} savedMessages={savedMessages} onSelectChannel={selectChannel} onOpenThread={openThreadFromOverlay} onClose={() => setWorkspaceOverlay(null)} />}
       {showDetails && <DetailsPanel selectedChannel={selectedChannel} members={detailMembers} summary={workSummary} summaryLoading={summaryLoading} summaryError={summaryError ?? undefined} onGenerateSummary={() => void generateSummary()} onJumpToMessage={jumpToMessage} onClose={() => setShowDetails(false)} />}
       {threadRoot && <ThreadPanel root={threadRoot} replies={threadReplies} draft={threadDraft} loading={threadLoading} onDraftChange={setThreadDraft} onKeyDown={onThreadKeyDown} onSubmit={() => void sendThreadReply()} onClose={() => { threadRootRef.current = null; setThreadRoot(null); setThreadReplies([]); threadReplyIDsRef.current.clear() }} />}

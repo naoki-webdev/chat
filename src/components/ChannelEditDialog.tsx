@@ -9,11 +9,12 @@ type Props = {
   members: ApiMember[]
   channelMembers: ApiChannelMember[]
   currentUserId: string
+  currentUserRole: ApiChannelMember['role']
   onSave: (payload: { name: string; description: string; memberIds: string[] }) => Promise<void>
   onClose: () => void
 }
 
-export function ChannelEditDialog({ channel, members, channelMembers, currentUserId, onSave, onClose }: Props) {
+export function ChannelEditDialog({ channel, members, channelMembers, currentUserId, currentUserRole, onSave, onClose }: Props) {
   const [name, setName] = useState(channel.name)
   const [description, setDescription] = useState(channel.description ?? '')
   const memberIDsForSave = () => Array.from(new Set([currentUserId, ...channelMembers.filter((member) => !member.is_bot).map((member) => member.id)]))
@@ -59,7 +60,7 @@ export function ChannelEditDialog({ channel, members, channelMembers, currentUse
           <div className="channel-create-field"><span>{t('channel.membersLabel')}</span><div className="channel-member-picker">{members.map((member) => {
             const selected = selectedMemberIDs.includes(member.id)
             const locked = member.id === currentUserId
-            return <label className={`channel-member-option ${selected ? 'channel-member-option-selected' : ''}`} key={member.id}><input type="checkbox" checked={selected} disabled={locked} onChange={() => setSelectedMemberIDs((current) => selected ? current.filter((id) => id !== member.id) : [...current, member.id])} /><Avatar initials={member.initials} color={member.color} size="small" /><span><strong>{member.name}</strong><small>{locked ? t('details.roles.owner') : `@${member.handle}`}</small></span></label>
+            return <label className={`channel-member-option ${selected ? 'channel-member-option-selected' : ''}`} key={member.id}><input type="checkbox" checked={selected} disabled={locked} onChange={() => setSelectedMemberIDs((current) => selected ? current.filter((id) => id !== member.id) : [...current, member.id])} /><Avatar initials={member.initials} color={member.color} size="small" /><span><strong>{member.name}</strong><small>{locked ? t(`details.roles.${currentUserRole}`) : `@${member.handle}`}</small></span></label>
           })}{members.length === 0 && <p className="channel-member-empty">{t('channel.membersEmpty')}</p>}</div><small className="channel-create-hint">{t('channel.editMembersHint')}</small></div>
           <div className="channel-create-actions"><button type="button" className="channel-create-cancel" onClick={onClose}>{t('channel.cancel')}</button><button type="submit" className="channel-create-submit" disabled={saving || !name.trim()}>{saving ? t('channel.saving') : t('channel.save')}</button></div>
         </form>

@@ -64,6 +64,17 @@ test('shows channel members and edits channel settings from the header', async (
   await expect(details).toContainText('Ken Ito')
 })
 
+test('hides channel settings from a regular channel member', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('メールアドレス').fill('ken@example.com')
+  await page.getByLabel('パスワード').fill('demo-password')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+  await page.getByRole('button', { name: /^design-system/ }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'design-system', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'チャンネルを編集' })).toHaveCount(0)
+})
+
 test('Orbit AI streams a response in its DM', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ログイン' }).click()

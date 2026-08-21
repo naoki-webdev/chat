@@ -68,10 +68,7 @@ func (r *memoryRepository) CreateChannel(_ context.Context, userID string, reque
 	if name == "" {
 		return Channel{}, invalidInput("name is required")
 	}
-	id := channelIDFromName(name)
-	if id == "" {
-		return Channel{}, invalidInput("name must include a valid character")
-	}
+	id := newChannelID()
 	group := strings.TrimSpace(request.Group)
 	if group == "" {
 		group = "Product"
@@ -117,7 +114,7 @@ func (r *memoryRepository) UpdateChannel(_ context.Context, channelID, userID st
 	}
 	role := r.memberships[channelID][userID]
 	if role != "owner" && role != "admin" {
-		return Channel{}, ErrForbidden
+		return Channel{}, ErrChannelManageForbidden
 	}
 	if request.MemberIDs != nil {
 		for _, memberID := range request.MemberIDs {

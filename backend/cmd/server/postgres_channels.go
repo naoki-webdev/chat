@@ -88,10 +88,7 @@ func (r *postgresRepository) CreateChannel(ctx context.Context, userID string, r
 	if name == "" {
 		return Channel{}, invalidInput("name is required")
 	}
-	id := channelIDFromName(name)
-	if id == "" {
-		return Channel{}, invalidInput("name must include a valid character")
-	}
+	id := newChannelID()
 	group := strings.TrimSpace(request.Group)
 	if group == "" {
 		group = "Product"
@@ -167,7 +164,7 @@ RETURNING c.id,c.name,c.channel_group,c.kind,c.description`, strings.TrimSpace(r
 		if !exists {
 			return Channel{}, ErrNotFound
 		}
-		return Channel{}, ErrForbidden
+		return Channel{}, ErrChannelManageForbidden
 	}
 	if err != nil {
 		return Channel{}, err
