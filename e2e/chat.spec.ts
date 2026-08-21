@@ -75,6 +75,41 @@ test('hides channel settings from a regular channel member', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'チャンネルを編集' })).toHaveCount(0)
 })
 
+test('syncs channel membership changes to another open client', async ({ browser }) => {
+  const ownerContext = await browser.newContext()
+  const memberContext = await browser.newContext()
+  const ownerPage = await ownerContext.newPage()
+  const memberPage = await memberContext.newPage()
+  try {
+    await ownerPage.goto('/')
+    await ownerPage.getByRole('button', { name: 'ログイン' }).click()
+    await expect(ownerPage.getByText('Lumen Labs')).toBeVisible()
+
+    await memberPage.goto('/')
+    await memberPage.getByLabel('メールアドレス').fill('ken@example.com')
+    await memberPage.getByLabel('パスワード').fill('demo-password')
+    await memberPage.getByRole('button', { name: 'ログイン' }).click()
+    await expect(memberPage.getByText('Lumen Labs')).toBeVisible()
+    const designSystemButton = memberPage.getByRole('button', { name: /^design-system/ })
+    await expect(designSystemButton).toBeVisible()
+
+    await ownerPage.getByRole('button', { name: 'チャンネルを編集' }).click()
+    const dialog = ownerPage.getByRole('dialog', { name: 'チャンネルを編集' })
+    await dialog.getByRole('checkbox', { name: /Ken Ito/ }).uncheck()
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(designSystemButton).toHaveCount(0)
+
+    await ownerPage.getByRole('button', { name: 'チャンネルを編集' }).click()
+    const restoreDialog = ownerPage.getByRole('dialog', { name: 'チャンネルを編集' })
+    await restoreDialog.getByRole('checkbox', { name: /Ken Ito/ }).check()
+    await restoreDialog.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(memberPage.getByRole('button', { name: /^design-system/ })).toBeVisible()
+  } finally {
+    await ownerContext.close()
+    await memberContext.close()
+  }
+})
+
 test('Orbit AI streams a response in its DM', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ログイン' }).click()

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -80,13 +81,13 @@ func (r *postgresRepository) ChannelIDForMessage(ctx context.Context, messageID 
 	return channelID, err
 }
 
-func (r *postgresRepository) CreateChannel(ctx context.Context, userID string, request channelRequest) (Channel, error) {
+func (r *postgresRepository) CreateChannel(ctx context.Context, userID string, request channelRequest) (Channel, []EventRecord, error) {
 	if err := validateChannelRequest(request); err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
-		return Channel{}, invalidInput("name is required")
+		return Channel{}, nil, invalidInput("name is required")
 	}
 	id := newChannelID()
 	group := strings.TrimSpace(request.Group)
@@ -100,55 +101,77 @@ func (r *postgresRepository) CreateChannel(ctx context.Context, userID string, r
 	description := strings.TrimSpace(request.Description)
 	transaction, err := r.pool.Begin(ctx)
 	if err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	defer transaction.Rollback(ctx)
 	var channel Channel
 	err = transaction.QueryRow(ctx, `INSERT INTO channels (id,name,channel_group,kind,description) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,channel_group,kind,description`, id, name, group, kind, description).Scan(&channel.ID, &channel.Name, &channel.Group, &channel.Kind, &channel.Description)
 	if isUniqueViolation(err) {
-		return Channel{}, ErrConflict
+		return Channel{}, nil, ErrConflict
 	}
 	if err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'owner')`, channel.ID, userID); err != nil {
 		if isForeignKeyViolation(err) {
-			return Channel{}, ErrUnauthorized
+			return Channel{}, nil, ErrUnauthorized
 		}
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	if kind == "channel" {
 		if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channel.ID, orbitAIUserID); err != nil {
-			return Channel{}, err
+			return Channel{}, nil, err
 		}
 	}
 	for _, memberID := range request.MemberIDs {
 		var available bool
 		if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND is_bot=false)`, memberID).Scan(&available); err != nil {
-			return Channel{}, err
+			return Channel{}, nil, err
 		}
 		if !available {
-			return Channel{}, invalidInput("member_ids contains an unavailable user")
+			return Channel{}, nil, invalidInput("member_ids contains an unavailable user")
 		}
 		if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channel.ID, memberID); err != nil {
-			return Channel{}, err
+			return Channel{}, nil, err
 		}
 	}
-	if err := transaction.Commit(ctx); err != nil {
-		return Channel{}, err
+	record, err := appendEventTx(ctx, transaction, realtimeEvent{Type: "channel.created", ChannelID: channel.ID})
+	if err != nil {
+		return Channel{}, nil, err
 	}
-	return channel, nil
+	if err := transaction.Commit(ctx); err != nil {
+		return Channel{}, nil, err
+	}
+	return channel, []EventRecord{record}, nil
 }
 
-func (r *postgresRepository) UpdateChannel(ctx context.Context, channelID, userID string, request channelUpdateRequest) (Channel, error) {
+func (r *postgresRepository) UpdateChannel(ctx context.Context, channelID, userID string, request channelUpdateRequest) (Channel, []EventRecord, error) {
 	if err := validateChannelUpdateRequest(request); err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	transaction, err := r.pool.Begin(ctx)
 	if err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	defer transaction.Rollback(ctx)
+	beforeMembers := make(map[string]string)
+	memberRows, err := transaction.Query(ctx, `SELECT user_id, role FROM channel_members WHERE channel_id=$1 FOR UPDATE`, channelID)
+	if err != nil {
+		return Channel{}, nil, err
+	}
+	for memberRows.Next() {
+		var memberID, memberRole string
+		if err := memberRows.Scan(&memberID, &memberRole); err != nil {
+			memberRows.Close()
+			return Channel{}, nil, err
+		}
+		beforeMembers[memberID] = memberRole
+	}
+	if err := memberRows.Err(); err != nil {
+		memberRows.Close()
+		return Channel{}, nil, err
+	}
+	memberRows.Close()
 	var channel Channel
 	err = transaction.QueryRow(ctx, `
 UPDATE channels c
@@ -159,42 +182,99 @@ RETURNING c.id,c.name,c.channel_group,c.kind,c.description`, strings.TrimSpace(r
 	if errors.Is(err, pgx.ErrNoRows) {
 		var exists bool
 		if existsErr := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM channels WHERE id=$1)`, channelID).Scan(&exists); existsErr != nil {
-			return Channel{}, existsErr
+			return Channel{}, nil, existsErr
 		}
 		if !exists {
-			return Channel{}, ErrNotFound
+			return Channel{}, nil, ErrNotFound
 		}
-		return Channel{}, ErrChannelManageForbidden
+		return Channel{}, nil, ErrChannelManageForbidden
 	}
 	if err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	if request.MemberIDs != nil {
 		for _, memberID := range request.MemberIDs {
 			var available bool
 			if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1 AND is_bot=false)`, memberID).Scan(&available); err != nil {
-				return Channel{}, err
+				return Channel{}, nil, err
 			}
 			if !available {
-				return Channel{}, invalidInput("member_ids contains an unavailable user")
+				return Channel{}, nil, invalidInput("member_ids contains an unavailable user")
 			}
 		}
 		if _, err := transaction.Exec(ctx, `DELETE FROM channel_members WHERE channel_id=$1 AND role='member' AND user_id<>$3 AND NOT (user_id=ANY($2::text[]))`, channelID, request.MemberIDs, orbitAIUserID); err != nil {
-			return Channel{}, err
+			return Channel{}, nil, err
 		}
 		for _, memberID := range request.MemberIDs {
 			if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channelID, memberID); err != nil {
-				return Channel{}, err
+				return Channel{}, nil, err
 			}
 		}
 		if channel.Kind == "channel" {
 			if _, err := transaction.Exec(ctx, `INSERT INTO channel_members (channel_id,user_id,role) VALUES ($1,$2,'member') ON CONFLICT (channel_id,user_id) DO NOTHING`, channelID, orbitAIUserID); err != nil {
-				return Channel{}, err
+				return Channel{}, nil, err
 			}
 		}
 	}
-	if err := transaction.Commit(ctx); err != nil {
-		return Channel{}, err
+	afterMembers := make(map[string]string)
+	memberRows, err = transaction.Query(ctx, `SELECT user_id, role FROM channel_members WHERE channel_id=$1`, channelID)
+	if err != nil {
+		return Channel{}, nil, err
 	}
-	return channel, nil
+	for memberRows.Next() {
+		var memberID, memberRole string
+		if err := memberRows.Scan(&memberID, &memberRole); err != nil {
+			memberRows.Close()
+			return Channel{}, nil, err
+		}
+		afterMembers[memberID] = memberRole
+	}
+	if err := memberRows.Err(); err != nil {
+		memberRows.Close()
+		return Channel{}, nil, err
+	}
+	memberRows.Close()
+	events := make([]EventRecord, 0)
+	if strings.TrimSpace(request.Name) != channel.Name || strings.TrimSpace(request.Description) != channel.Description {
+		record, err := appendEventTx(ctx, transaction, realtimeEvent{Type: "channel.updated", ChannelID: channelID})
+		if err != nil {
+			return Channel{}, nil, err
+		}
+		events = append(events, record)
+	}
+	addedMemberIDs := make([]string, 0)
+	for memberID := range afterMembers {
+		if _, existed := beforeMembers[memberID]; !existed {
+			addedMemberIDs = append(addedMemberIDs, memberID)
+		}
+	}
+	sort.Strings(addedMemberIDs)
+	for _, memberID := range addedMemberIDs {
+		record, err := appendEventTx(ctx, transaction, realtimeEvent{Type: "channel.member_added", ChannelID: channelID, MemberID: memberID})
+		if err != nil {
+			return Channel{}, nil, err
+		}
+		events = append(events, record)
+	}
+	removedMemberIDs := make([]string, 0)
+	for memberID, memberRole := range beforeMembers {
+		if memberRole != "member" {
+			continue
+		}
+		if _, stillMember := afterMembers[memberID]; !stillMember {
+			removedMemberIDs = append(removedMemberIDs, memberID)
+		}
+	}
+	sort.Strings(removedMemberIDs)
+	for _, memberID := range removedMemberIDs {
+		record, err := appendEventTx(ctx, transaction, realtimeEvent{Type: "channel.member_removed", ChannelID: channelID, MemberID: memberID})
+		if err != nil {
+			return Channel{}, nil, err
+		}
+		events = append(events, record)
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return Channel{}, nil, err
+	}
+	return channel, events, nil
 }

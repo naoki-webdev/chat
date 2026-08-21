@@ -257,6 +257,7 @@ type realtimeEvent struct {
 	ActorInitials   string   `json:"actor_initials,omitempty"`
 	ActorColor      string   `json:"actor_color,omitempty"`
 	Presence        string   `json:"presence,omitempty"`
+	MemberID        string   `json:"member_id,omitempty"`
 }
 
 type EventRecord struct {
@@ -301,8 +302,8 @@ type repository interface {
 	IsChannelMember(context.Context, string, string) (bool, error)
 	ListChannelMemberIDs(context.Context, string) (map[string]struct{}, error)
 	ChannelIDForMessage(context.Context, string) (string, error)
-	CreateChannel(context.Context, string, channelRequest) (Channel, error)
-	UpdateChannel(context.Context, string, string, channelUpdateRequest) (Channel, error)
+	CreateChannel(context.Context, string, channelRequest) (Channel, []EventRecord, error)
+	UpdateChannel(context.Context, string, string, channelUpdateRequest) (Channel, []EventRecord, error)
 	MarkChannelRead(context.Context, string, string) (int64, error)
 	ListMessagePage(context.Context, string, string, int) (MessagePage, error)
 	ListAIContextMessages(context.Context, string, int) ([]Message, error)

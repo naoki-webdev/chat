@@ -188,6 +188,33 @@ func TestAuthenticationRateLimit(t *testing.T) {
 	}
 }
 
+func TestAIRequestDailyLimit(t *testing.T) {
+	server := newServer()
+	server.aiDailyLimit = 1
+	if !server.acquireAI("u-daily:general") {
+		t.Fatal("first AI request should be allowed")
+	}
+	server.releaseAI("u-daily:general")
+	server.aiLastRun["u-daily:other"] = time.Now().Add(-2 * aiMinInterval)
+	if server.acquireAI("u-daily:other") {
+		t.Fatal("second AI request should be blocked by the daily user limit")
+	}
+}
+
+func TestRequestClientIPOnlyTrustsForwardedHeadersWhenConfigured(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-For", "198.51.100.20")
+	t.Setenv("TRUST_PROXY_HEADERS", "false")
+	if got := requestClientIP(request); got != "192.0.2.10" {
+		t.Fatalf("untrusted forwarded address = %q, want remote address", got)
+	}
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	if got := requestClientIP(request); got != "198.51.100.20" {
+		t.Fatalf("trusted forwarded address = %q, want forwarded address", got)
+	}
+}
+
 func TestChannelSummaryEndpoint(t *testing.T) {
 	server := newServerWithRepositoryAndAI(newMemoryRepository(), summaryTestService{})
 	handler := server.handler()
@@ -422,6 +449,10 @@ func TestReadCursorSurvivesReadMessageDeletion(t *testing.T) {
 func TestCreateChannel(t *testing.T) {
 	server := newServer()
 	cookie := registerTestUser(t, server.handler(), "channel@example.com")
+	beforeEvents, err := server.repository.ListEvents(context.Background(), "u-ayaka", 0, 100)
+	if err != nil {
+		t.Fatalf("list events before channel creation: %v", err)
+	}
 	payload, _ := json.Marshal(channelRequest{Name: "new-room", Group: "Product", Description: "created in test", MemberIDs: []string{"u-ayaka"}})
 	request := authorizedRequest(http.MethodPost, "/api/channels", payload, cookie)
 	recorder := httptest.NewRecorder()
@@ -442,6 +473,13 @@ func TestCreateChannel(t *testing.T) {
 	}
 	if !member {
 		t.Fatal("selected member was not added to the channel")
+	}
+	createdEvents, err := server.repository.ListEvents(context.Background(), "u-ayaka", beforeEvents.Cursor, 100)
+	if err != nil {
+		t.Fatalf("list events after channel creation: %v", err)
+	}
+	if !containsChannelEvent(createdEvents.Events, "channel.created", channel.ID, "") {
+		t.Fatalf("invited member did not receive channel.created event: %+v", createdEvents.Events)
 	}
 
 	renamePayload, _ := json.Marshal(channelUpdateRequest{Name: "team", Description: "renamed in test"})
@@ -469,6 +507,10 @@ func TestChannelMembersAndOwnerUpdate(t *testing.T) {
 	server := newServer()
 	handler := server.handler()
 	ownerCookie := loginTestUser(t, handler, "demo@example.com")
+	beforeEvents, err := server.repository.ListEvents(context.Background(), "u-ken", 0, 100)
+	if err != nil {
+		t.Fatalf("list events before channel update: %v", err)
+	}
 
 	membersRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(membersRecorder, authorizedRequest(http.MethodGet, "/api/channels/design-system/members", nil, ownerCookie))
@@ -500,6 +542,20 @@ func TestChannelMembersAndOwnerUpdate(t *testing.T) {
 	if member, err := server.repository.IsChannelMember(context.Background(), orbitAIUserID, "design-system"); err != nil || !member {
 		t.Fatalf("Orbit AI membership = %v, err = %v", member, err)
 	}
+	updatedEvents, err := server.repository.ListEvents(context.Background(), "u-ken", beforeEvents.Cursor, 100)
+	if err != nil {
+		t.Fatalf("list events after channel update: %v", err)
+	}
+	if !containsChannelEvent(updatedEvents.Events, "channel.member_removed", "design-system", "u-ken") {
+		t.Fatalf("removed member did not receive removal event: %+v", updatedEvents.Events)
+	}
+	currentMemberEvents, err := server.repository.ListEvents(context.Background(), "u-ayaka", beforeEvents.Cursor, 100)
+	if err != nil {
+		t.Fatalf("list events for current member after channel update: %v", err)
+	}
+	if !containsChannelEvent(currentMemberEvents.Events, "channel.updated", "design-system", "") {
+		t.Fatalf("current member did not receive channel.updated event: %+v", currentMemberEvents.Events)
+	}
 
 	memberCookie := loginTestUser(t, handler, "ayaka@example.com")
 	forbiddenRecorder := httptest.NewRecorder()
@@ -510,6 +566,15 @@ func TestChannelMembersAndOwnerUpdate(t *testing.T) {
 	if !strings.Contains(forbiddenRecorder.Body.String(), "permission to manage this channel") {
 		t.Fatalf("member update error = %s", forbiddenRecorder.Body.String())
 	}
+}
+
+func containsChannelEvent(events []realtimeEvent, eventType, channelID, memberID string) bool {
+	for _, event := range events {
+		if event.Type == eventType && event.ChannelID == channelID && event.MemberID == memberID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestChannelMembershipProtectsPrivateChannelsAndEvents(t *testing.T) {

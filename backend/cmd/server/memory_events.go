@@ -9,7 +9,9 @@ func (r *memoryRepository) ListEvents(_ context.Context, userID string, after in
 	events := make([]realtimeEvent, 0, limit)
 	hasMore := false
 	for _, record := range r.events {
-		if record.Sequence <= after || (record.Event.ChannelID != "*" && !r.isChannelMemberLocked(userID, record.Event.ChannelID)) {
+		canReadChannel := record.Event.ChannelID == "*" || r.isChannelMemberLocked(userID, record.Event.ChannelID)
+		isRemovedMember := record.Event.Type == "channel.member_removed" && record.Event.MemberID == userID
+		if record.Sequence <= after || (!canReadChannel && !isRemovedMember) {
 			continue
 		}
 		if len(events) >= limit {

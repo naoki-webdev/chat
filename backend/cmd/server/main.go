@@ -17,14 +17,16 @@ import (
 )
 
 type server struct {
-	repository  repository
-	aiService   ai.Service
-	hub         *hub
-	upgrader    websocket.Upgrader
-	aiMu        sync.Mutex
-	aiInFlight  map[string]int
-	aiLastRun   map[string]time.Time
-	authLimiter *authRateLimiter
+	repository   repository
+	aiService    ai.Service
+	hub          *hub
+	upgrader     websocket.Upgrader
+	aiMu         sync.Mutex
+	aiInFlight   map[string]int
+	aiLastRun    map[string]time.Time
+	aiDaily      map[string]aiDailyEntry
+	aiDailyLimit int
+	authLimiter  *authRateLimiter
 }
 
 func newServer() *server {
@@ -37,12 +39,14 @@ func newServerWithRepository(repository repository) *server {
 
 func newServerWithRepositoryAndAI(repository repository, service ai.Service) *server {
 	return &server{
-		repository:  repository,
-		aiService:   service,
-		hub:         newHub(),
-		aiInFlight:  make(map[string]int),
-		aiLastRun:   make(map[string]time.Time),
-		authLimiter: newAuthRateLimiter(),
+		repository:   repository,
+		aiService:    service,
+		hub:          newHub(),
+		aiInFlight:   make(map[string]int),
+		aiLastRun:    make(map[string]time.Time),
+		aiDaily:      make(map[string]aiDailyEntry),
+		aiDailyLimit: configuredAIDailyRequestLimit(),
+		authLimiter:  newAuthRateLimiter(),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,

@@ -119,6 +119,15 @@ func cloneEventRecord(record EventRecord) EventRecord {
 	return record
 }
 
+func (r *memoryRepository) appendEventLocked(event realtimeEvent) EventRecord {
+	r.sequence++
+	event.EventID = r.sequence
+	event.Sequence = r.sequence
+	record := EventRecord{Sequence: r.sequence, Event: event}
+	r.events = append(r.events, record)
+	return cloneEventRecord(record)
+}
+
 func newChannelID() string {
 	return "ch-" + randomID()
 }

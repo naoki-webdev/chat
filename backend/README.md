@@ -44,6 +44,8 @@ message.ai_failed
 
 WebSocketは、同じチャンネルに接続しているクライアントへ次のイベントをJSONで配信します。
 
+チャンネル作成・rename・参加者変更も`channel.created`、`channel.updated`、`channel.member_added`、`channel.member_removed`として永続化し、開いているクライアントのサイドバーへ反映します。除外されたユーザーには`member_removed`だけを届け、差分取得後にチャンネルを一覧から外します。
+
 ```json
 {
   "type": "message.created",
@@ -53,7 +55,9 @@ WebSocketは、同じチャンネルに接続しているクライアントへ�
 }
 ```
 
-`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`と`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。
+`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`と`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。AI呼び出しには同時実行・最短間隔に加えて、ユーザー単位の日次上限（`AI_DAILY_REQUEST_LIMIT`、既定100）があります。
+
+リバースプロキシ配下で信頼できる`X-Forwarded-For` / `X-Real-IP`を使う場合だけ、`TRUST_PROXY_HEADERS=true`を設定します。既定ではこれらのヘッダーを信用せず、TCP接続元をレート制限のIPとして使います。
 
 チャンネルは`channel_members`でアクセス制御します。既定の公開チャンネル（`general`、`frontend`、`design-system`、`roadmap`、`research`）には登録時に参加しますが、ユーザーが作成したチャンネルは作成者とOrbit AIだけが初期メンバーです。新規ユーザーを既存の全チャンネルへ自動参加させることはありません。メッセージ履歴、スレッド、リアクション、イベント差分、チャンネル別WebSocket購読はmembershipを確認してから返します。
 

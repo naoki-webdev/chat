@@ -9,7 +9,7 @@ import (
 
 func (r *postgresRepository) ListEvents(ctx context.Context, userID string, after int64, limit int) (EventPage, error) {
 	limit = normalizeLimit(limit)
-	rows, err := r.pool.Query(ctx, `SELECT e.sequence,e.event_type,e.channel_id,e.message_id,COALESCE(e.parent_message_id,''),e.payload FROM chat_events e JOIN channel_members cm ON cm.channel_id=e.channel_id AND cm.user_id=$1 WHERE e.sequence>$2 ORDER BY e.sequence LIMIT $3`, userID, after, limit+1)
+	rows, err := r.pool.Query(ctx, `SELECT e.sequence,e.event_type,e.channel_id,COALESCE(e.message_id,''),COALESCE(e.parent_message_id,''),COALESCE(e.member_id,''),e.payload FROM chat_events e LEFT JOIN channel_members cm ON cm.channel_id=e.channel_id AND cm.user_id=$1 WHERE e.sequence>$2 AND (cm.user_id IS NOT NULL OR (e.event_type='channel.member_removed' AND e.member_id=$1)) ORDER BY e.sequence LIMIT $3`, userID, after, limit+1)
 	if err != nil {
 		return EventPage{}, err
 	}
@@ -17,12 +17,12 @@ func (r *postgresRepository) ListEvents(ctx context.Context, userID string, afte
 	events := make([]realtimeEvent, 0, limit+1)
 	for rows.Next() {
 		var sequence int64
-		var eventType, channelID, messageID, parentMessageID string
+		var eventType, channelID, messageID, parentMessageID, memberID string
 		var payload []byte
-		if err := rows.Scan(&sequence, &eventType, &channelID, &messageID, &parentMessageID, &payload); err != nil {
+		if err := rows.Scan(&sequence, &eventType, &channelID, &messageID, &parentMessageID, &memberID, &payload); err != nil {
 			return EventPage{}, err
 		}
-		event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID}
+		event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID, MemberID: memberID}
 		if len(payload) > 0 && string(payload) != "null" {
 			if err := json.Unmarshal(payload, &event.Message); err != nil {
 				return EventPage{}, err
@@ -68,7 +68,7 @@ func appendEventTx(ctx context.Context, transaction pgx.Tx, event realtimeEvent)
 		parentMessageID = event.Message.ParentMessageID
 	}
 	var sequence int64
-	if err := transaction.QueryRow(ctx, `INSERT INTO chat_events (event_type,channel_id,message_id,parent_message_id,payload) VALUES ($1,$2,$3,$4,$5) RETURNING sequence`, event.Type, event.ChannelID, messageID, nullableString(parentMessageID), payload).Scan(&sequence); err != nil {
+	if err := transaction.QueryRow(ctx, `INSERT INTO chat_events (event_type,channel_id,message_id,parent_message_id,member_id,payload) VALUES ($1,$2,$3,$4,$5,$6) RETURNING sequence`, event.Type, event.ChannelID, nullableString(messageID), nullableString(parentMessageID), nullableString(event.MemberID), payload).Scan(&sequence); err != nil {
 		return EventRecord{}, err
 	}
 	event.EventID = sequence

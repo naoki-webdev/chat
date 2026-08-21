@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,20 @@ func shouldInvokeAI(channelID, body string) bool {
 }
 
 const aiMinInterval = time.Second
+const defaultAIDailyRequestLimit = 100
+
+type aiDailyEntry struct {
+	Day      string
+	Requests int
+}
+
+func configuredAIDailyRequestLimit() int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("AI_DAILY_REQUEST_LIMIT")))
+	if err != nil || value < 1 {
+		return defaultAIDailyRequestLimit
+	}
+	return value
+}
 
 const (
 	maxAIContextCharacters  = 32_000
@@ -48,8 +64,19 @@ func (s *server) acquireAI(key string) bool {
 	if s.aiInFlight[key] >= 1 || now.Sub(s.aiLastRun[key]) < aiMinInterval {
 		return false
 	}
+	userID := strings.SplitN(key, ":", 2)[0]
+	today := now.UTC().Format("2006-01-02")
+	daily := s.aiDaily[userID]
+	if daily.Day == today && daily.Requests >= s.aiDailyLimit {
+		return false
+	}
 	s.aiInFlight[key]++
 	s.aiLastRun[key] = now
+	if daily.Day != today {
+		daily = aiDailyEntry{Day: today}
+	}
+	daily.Requests++
+	s.aiDaily[userID] = daily
 	return true
 }
 

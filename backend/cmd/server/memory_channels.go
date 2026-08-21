@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sort"
 	"strings"
 )
 
@@ -60,13 +61,13 @@ func (r *memoryRepository) ChannelIDForMessage(_ context.Context, messageID stri
 	return "", ErrNotFound
 }
 
-func (r *memoryRepository) CreateChannel(_ context.Context, userID string, request channelRequest) (Channel, error) {
+func (r *memoryRepository) CreateChannel(_ context.Context, userID string, request channelRequest) (Channel, []EventRecord, error) {
 	if err := validateChannelRequest(request); err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
-		return Channel{}, invalidInput("name is required")
+		return Channel{}, nil, invalidInput("name is required")
 	}
 	id := newChannelID()
 	group := strings.TrimSpace(request.Group)
@@ -80,12 +81,12 @@ func (r *memoryRepository) CreateChannel(_ context.Context, userID string, reque
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.hasChannelLocked(id) {
-		return Channel{}, ErrConflict
+		return Channel{}, nil, ErrConflict
 	}
 	for _, memberID := range request.MemberIDs {
 		record, exists := r.users[memberID]
 		if !exists || record.IsBot {
-			return Channel{}, invalidInput("member_ids contains an unavailable user")
+			return Channel{}, nil, invalidInput("member_ids contains an unavailable user")
 		}
 	}
 	channel := Channel{ID: id, Name: name, Group: group, Kind: kind, Description: strings.TrimSpace(request.Description)}
@@ -100,27 +101,32 @@ func (r *memoryRepository) CreateChannel(_ context.Context, userID string, reque
 	if kind == "channel" {
 		r.memberships[id][orbitAIUserID] = "member"
 	}
-	return channel, nil
+	event := r.appendEventLocked(realtimeEvent{Type: "channel.created", ChannelID: id})
+	return channel, []EventRecord{event}, nil
 }
 
-func (r *memoryRepository) UpdateChannel(_ context.Context, channelID, userID string, request channelUpdateRequest) (Channel, error) {
+func (r *memoryRepository) UpdateChannel(_ context.Context, channelID, userID string, request channelUpdateRequest) (Channel, []EventRecord, error) {
 	if err := validateChannelUpdateRequest(request); err != nil {
-		return Channel{}, err
+		return Channel{}, nil, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.hasChannelLocked(channelID) {
-		return Channel{}, ErrNotFound
+		return Channel{}, nil, ErrNotFound
 	}
 	role := r.memberships[channelID][userID]
 	if role != "owner" && role != "admin" {
-		return Channel{}, ErrChannelManageForbidden
+		return Channel{}, nil, ErrChannelManageForbidden
+	}
+	previousMembers := make(map[string]string, len(r.memberships[channelID]))
+	for memberID, memberRole := range r.memberships[channelID] {
+		previousMembers[memberID] = memberRole
 	}
 	if request.MemberIDs != nil {
 		for _, memberID := range request.MemberIDs {
 			record, exists := r.users[memberID]
 			if !exists || record.IsBot {
-				return Channel{}, invalidInput("member_ids contains an unavailable user")
+				return Channel{}, nil, invalidInput("member_ids contains an unavailable user")
 			}
 		}
 		desired := make(map[string]struct{}, len(request.MemberIDs))
@@ -147,11 +153,43 @@ func (r *memoryRepository) UpdateChannel(_ context.Context, channelID, userID st
 		if r.channels[index].ID != channelID {
 			continue
 		}
+		previousName := r.channels[index].Name
+		previousDescription := r.channels[index].Description
 		r.channels[index].Name = strings.TrimSpace(request.Name)
 		r.channels[index].Description = strings.TrimSpace(request.Description)
-		return r.channels[index], nil
+		events := make([]EventRecord, 0)
+		if previousName != r.channels[index].Name || previousDescription != r.channels[index].Description {
+			events = append(events, r.appendEventLocked(realtimeEvent{Type: "channel.updated", ChannelID: channelID}))
+		}
+		if request.MemberIDs != nil {
+			memberIDs := make([]string, 0, len(r.memberships[channelID]))
+			for memberID := range r.memberships[channelID] {
+				memberIDs = append(memberIDs, memberID)
+			}
+			sort.Strings(memberIDs)
+			for _, memberID := range memberIDs {
+				if _, existed := previousMembers[memberID]; existed {
+					continue
+				}
+				events = append(events, r.appendEventLocked(realtimeEvent{Type: "channel.member_added", ChannelID: channelID, MemberID: memberID}))
+			}
+			removedMemberIDs := make([]string, 0)
+			for memberID, memberRole := range previousMembers {
+				if memberRole != "member" {
+					continue
+				}
+				if _, stillMember := r.memberships[channelID][memberID]; !stillMember {
+					removedMemberIDs = append(removedMemberIDs, memberID)
+				}
+			}
+			sort.Strings(removedMemberIDs)
+			for _, memberID := range removedMemberIDs {
+				events = append(events, r.appendEventLocked(realtimeEvent{Type: "channel.member_removed", ChannelID: channelID, MemberID: memberID}))
+			}
+		}
+		return r.channels[index], events, nil
 	}
-	return Channel{}, ErrNotFound
+	return Channel{}, nil, ErrNotFound
 }
 
 func (r *memoryRepository) MarkChannelRead(_ context.Context, userID, channelID string) (int64, error) {

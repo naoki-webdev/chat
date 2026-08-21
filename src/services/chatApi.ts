@@ -69,7 +69,7 @@ export type ApiChannelSummary = {
 }
 
 export type RealtimeEvent = {
-  type: 'message.created' | 'message.updated' | 'message.deleted' | 'reaction.added' | 'reaction.removed' | 'message.ai_started' | 'message.ai_delta' | 'message.ai_completed' | 'message.ai_failed' | 'typing.started' | 'typing.stopped' | 'presence.changed'
+  type: 'message.created' | 'message.updated' | 'message.deleted' | 'reaction.added' | 'reaction.removed' | 'message.ai_started' | 'message.ai_delta' | 'message.ai_completed' | 'message.ai_failed' | 'typing.started' | 'typing.stopped' | 'presence.changed' | 'channel.created' | 'channel.updated' | 'channel.member_added' | 'channel.member_removed'
   channel_id: string
   event_id?: number
   sequence: number
@@ -84,6 +84,7 @@ export type RealtimeEvent = {
   actor_initials?: string
   actor_color?: string
   presence?: 'online' | 'away' | 'offline'
+  member_id?: string
 }
 
 export type MessagePage = {

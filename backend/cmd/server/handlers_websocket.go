@@ -64,6 +64,9 @@ func (s *server) broadcast(event realtimeEvent) {
 			log.Printf("could not snapshot channel membership for %s: %v", event.ChannelID, err)
 			return
 		}
+		if event.Type == "channel.member_removed" && event.MemberID != "" {
+			memberIDs[event.MemberID] = struct{}{}
+		}
 	}
 	s.hub.broadcast(event.ChannelID, payload, memberIDs)
 }

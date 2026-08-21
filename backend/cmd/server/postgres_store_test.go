@@ -46,7 +46,7 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 	}
 	defer repository.Close()
 
-	channel, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-private-" + randomID(), Group: "Product", MemberIDs: []string{"u-ken"}})
+	channel, _, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-private-" + randomID(), Group: "Product", MemberIDs: []string{"u-ken"}})
 	if err != nil {
 		t.Fatalf("create private channel: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 	}
 	_ = ownerConnection.Close()
 
-	if _, err := repository.UpdateChannel(ctx, channel.ID, "u-naoki", channelUpdateRequest{Name: channel.Name, Description: channel.Description, MemberIDs: []string{"u-ayaka"}}); err != nil {
+	if _, _, err := repository.UpdateChannel(ctx, channel.ID, "u-naoki", channelUpdateRequest{Name: channel.Name, Description: channel.Description, MemberIDs: []string{"u-ayaka"}}); err != nil {
 		t.Fatalf("update PostgreSQL channel members: %v", err)
 	}
 	updatedMember, err := repository.IsChannelMember(ctx, "u-ayaka", channel.ID)
@@ -159,7 +159,7 @@ func TestPostgresThreadRootDeletionAndLateMembership(t *testing.T) {
 	}
 	defer repository.Close()
 
-	channel, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-late-private-" + randomID(), Group: "Product"})
+	channel, _, err := repository.CreateChannel(ctx, "u-naoki", channelRequest{Name: "pg-late-private-" + randomID(), Group: "Product"})
 	if err != nil {
 		t.Fatalf("create private channel: %v", err)
 	}

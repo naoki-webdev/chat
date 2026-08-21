@@ -13,6 +13,7 @@ type UseChatRealtimeOptions = {
   threadRootRef: MutableRefObject<Message | null>
   threadReplyIDsRef: MutableRefObject<Set<string>>
   loadMessagesRef: MutableRefObject<(channelId: string) => Promise<void>>
+  refreshChannelsRef: MutableRefObject<(advanceCursor?: boolean) => Promise<void>>
   setChannels: Dispatch<SetStateAction<Channel[]>>
   setMessages: Dispatch<SetStateAction<MessageMap>>
   setTypingUsers: Dispatch<SetStateAction<TypingUsers>>
@@ -28,6 +29,7 @@ export function useChatRealtime({
   threadRootRef,
   threadReplyIDsRef,
   loadMessagesRef,
+  refreshChannelsRef,
   setChannels,
   setMessages,
   setTypingUsers,
@@ -65,6 +67,11 @@ export function useChatRealtime({
     const cursor = event.event_id ?? event.sequence
     if (cursor > 0 && cursor <= eventCursorRef.current) return
     advanceEventCursor(cursor)
+
+    if (event.type === 'channel.created' || event.type === 'channel.updated' || event.type === 'channel.member_added' || event.type === 'channel.member_removed') {
+      void refreshChannelsRef.current().catch(() => undefined)
+      return
+    }
 
     if (event.type === 'typing.started' || event.type === 'typing.stopped') {
       if (!event.actor_id || event.actor_id === currentUser.id || !event.actor_name) return
@@ -180,7 +187,7 @@ export function useChatRealtime({
     if (event.channel_id !== selectedChannelRef.current && event.type === 'message.created') {
       setChannels((current) => current.map((channel) => channel.id === event.channel_id ? { ...channel, unread: channel.unread + 1 } : channel))
     }
-  }, [addThreadReply, advanceEventCursor, currentUser.id, setChannels, setMessages, setMyPresence, setThreadReplies, setThreadRoot, setTypingUsers, threadRootRef, selectedChannelRef])
+  }, [addThreadReply, advanceEventCursor, currentUser.id, refreshChannelsRef, setChannels, setMessages, setMyPresence, setThreadReplies, setThreadRoot, setTypingUsers, threadRootRef, selectedChannelRef])
 
   const syncEvents = useCallback(async (after: number) => {
     let cursor = after
@@ -213,6 +220,7 @@ export function useChatRealtime({
   const enqueueEventSync = useCallback(() => {
     realtimeQueueRef.current = realtimeQueueRef.current.then(async () => {
       await syncEvents(eventCursorRef.current)
+      await refreshChannelsRef.current()
       await loadMessagesRef.current(selectedChannelRef.current)
     }).catch(() => undefined)
   }, [loadMessagesRef, selectedChannelRef, syncEvents])

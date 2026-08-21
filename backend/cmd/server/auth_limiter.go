@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -88,17 +89,28 @@ func uniqueNonEmpty(values []string) []string {
 }
 
 func requestClientIP(request *http.Request) string {
-	if forwarded := strings.TrimSpace(strings.Split(request.Header.Get("X-Forwarded-For"), ",")[0]); net.ParseIP(forwarded) != nil {
-		return forwarded
-	}
-	if realIP := strings.TrimSpace(request.Header.Get("X-Real-IP")); net.ParseIP(realIP) != nil {
-		return realIP
+	if trustProxyHeaders() {
+		if forwarded := strings.TrimSpace(strings.Split(request.Header.Get("X-Forwarded-For"), ",")[0]); net.ParseIP(forwarded) != nil {
+			return forwarded
+		}
+		if realIP := strings.TrimSpace(request.Header.Get("X-Real-IP")); net.ParseIP(realIP) != nil {
+			return realIP
+		}
 	}
 	host, _, err := net.SplitHostPort(strings.TrimSpace(request.RemoteAddr))
 	if err == nil && host != "" {
 		return host
 	}
 	return strings.TrimSpace(request.RemoteAddr)
+}
+
+func trustProxyHeaders() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("TRUST_PROXY_HEADERS"))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func authRateLimitKeys(request *http.Request, email string) []string {

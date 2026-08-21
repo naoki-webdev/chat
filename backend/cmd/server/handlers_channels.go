@@ -24,10 +24,13 @@ func (s *server) handleChannels(writer http.ResponseWriter, request *http.Reques
 		if !decodeJSON(writer, request, &payload) {
 			return
 		}
-		channel, err := s.repository.CreateChannel(request.Context(), user.ID, payload)
+		channel, records, err := s.repository.CreateChannel(request.Context(), user.ID, payload)
 		if err != nil {
 			writeRepositoryError(writer, err)
 			return
+		}
+		for _, record := range records {
+			s.broadcast(record.Event)
 		}
 		writeJSON(writer, http.StatusCreated, channel)
 	default:
@@ -67,10 +70,13 @@ func (s *server) handleChannelRoutes(writer http.ResponseWriter, request *http.R
 		if !decodeJSON(writer, request, &payload) {
 			return
 		}
-		channel, err := s.repository.UpdateChannel(request.Context(), channelID, user.ID, payload)
+		channel, records, err := s.repository.UpdateChannel(request.Context(), channelID, user.ID, payload)
 		if err != nil {
 			writeRepositoryError(writer, err)
 			return
+		}
+		for _, record := range records {
+			s.broadcast(record.Event)
 		}
 		writeJSON(writer, http.StatusOK, channel)
 		return

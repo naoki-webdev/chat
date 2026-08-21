@@ -7,7 +7,8 @@ import { DetailsPanel } from './components/DetailsPanel'
 import { ThreadPanel } from './components/ThreadPanel'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { WorkspaceOverlay, type SavedMessageRef, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
-import { chatApi, ChatApiError, type ApiChannelMember, type ApiChannelSummary, type ApiMember, type ApiMessage, type ApiUser } from './services/chatApi'
+import { chatApi, type ApiChannelMember, type ApiChannelSummary, type ApiMember, type ApiMessage, type ApiUser } from './services/chatApi'
+import { useChannelManagement } from './hooks/useChannelManagement'
 import { useChatRealtime } from './hooks/useChatRealtime'
 import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, mergeMessage, type Channel, type Message } from './types/chat'
 import { t } from './i18n'
@@ -56,6 +57,7 @@ function App() {
   const messageListRef = useRef<HTMLDivElement>(null)
   const selectedChannelRef = useRef(selectedChannelId)
   const loadMessagesRef = useRef<(channelId: string) => Promise<void>>(async () => undefined)
+  const refreshChannelsRef = useRef<(advanceCursor?: boolean) => Promise<void>>(async () => undefined)
   const advanceEventCursorRef = useRef<(cursor: number) => void>(() => undefined)
   const typingTimerRef = useRef<number | undefined>(undefined)
   const typingActiveRef = useRef(false)
@@ -64,6 +66,7 @@ function App() {
   const messageElementsRef = useRef<Record<string, HTMLElement | null>>({})
   const summaryRequestSequenceRef = useRef(0)
   const summaryAbortControllerRef = useRef<AbortController | null>(null)
+  const channelRefreshSequenceRef = useRef(0)
 
   const backendReady = backendState === 'ready'
   const backendUnavailable = backendState === 'unavailable'
@@ -118,6 +121,16 @@ function App() {
   }
 
   loadMessagesRef.current = (channelId) => loadMessages(channelId)
+  const refreshChannels = async (advanceCursor = false) => {
+    const requestSequence = channelRefreshSequenceRef.current + 1
+    channelRefreshSequenceRef.current = requestSequence
+    const remote = await chatApi.listChannels()
+    if (requestSequence !== channelRefreshSequenceRef.current) return
+    setChannels(remote.channels.map(fromApiChannel))
+    setSelectedChannelId((current) => remote.channels.some((channel) => channel.id === current) ? current : remote.channels[0]?.id ?? current)
+    if (advanceCursor) advanceEventCursorRef.current(remote.cursor)
+  }
+  refreshChannelsRef.current = refreshChannels
   const realtime = useChatRealtime({
     enabled: backendReady,
     currentUser,
@@ -125,6 +138,7 @@ function App() {
     threadRootRef,
     threadReplyIDsRef,
     loadMessagesRef,
+    refreshChannelsRef,
     setChannels,
     setMessages,
     setTypingUsers,
@@ -134,6 +148,18 @@ function App() {
   })
   const { send, addThreadReply } = realtime
   advanceEventCursorRef.current = realtime.advanceEventCursor
+  const { openChannelCreate, createChannel, updateChannel } = useChannelManagement({
+    backendReady,
+    backendUnavailableMessage,
+    selectedChannelId,
+    setChannels,
+    setMessages,
+    setSelectedChannelId,
+    setSelectedChannelMembers,
+    setChannelCreateGroup,
+    setChannelEditOpen,
+    setActionError,
+  })
 
   useEffect(() => {
     chatApi.me().then((user) => { setAuthUser(user); setAuthState('authenticated') }).catch(() => setAuthState('anonymous'))
@@ -182,11 +208,9 @@ function App() {
     const loadChannels = async () => {
       if (disposed || loaded) return
       try {
-        const remote = await chatApi.listChannels()
+        await refreshChannels(true)
         if (disposed) return
-        setChannels(remote.channels.map(fromApiChannel))
         setAvailableMembers([])
-        advanceEventCursorRef.current(remote.cursor)
         setBackendState('ready')
         loaded = true
         void chatApi.listUsers().then((memberResponse) => {
@@ -435,55 +459,6 @@ function App() {
       if (exists) return current.filter((item) => !(item.channelId === selectedChannelId && item.messageId === messageId))
       return [...current, { channelId: selectedChannelId, messageId }]
     })
-  }
-
-  const openChannelCreate = (group: string) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    setActionError(null)
-    setChannelCreateGroup(group)
-  }
-
-  const createChannel = async (payload: { name: string; group: string; description: string; memberIds: string[] }) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      throw new Error('backend unavailable')
-    }
-    try {
-      const channel = fromApiChannel(await chatApi.createChannel({ name: payload.name, group: payload.group, kind: 'channel', description: payload.description, member_ids: payload.memberIds }))
-      setChannels((current) => [...current, channel])
-      setMessages((current) => ({ ...current, [channel.id]: [] }))
-      setSelectedChannelId(channel.id)
-      setChannelCreateGroup(null)
-      setActionError(null)
-    } catch (error) {
-      setActionError(error instanceof ChatApiError && error.status === 409 ? t('errors.channelConflict') : t('errors.channelCreate'))
-      throw new Error('channel creation failed')
-    }
-  }
-
-  const updateChannel = async (payload: { name: string; description: string; memberIds: string[] }) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      throw new Error('backend unavailable')
-    }
-    try {
-      const channel = fromApiChannel(await chatApi.updateChannel(selectedChannelId, { name: payload.name, description: payload.description, member_ids: payload.memberIds }))
-      setChannels((current) => current.map((item) => item.id === channel.id ? channel : item))
-      try {
-        const memberResponse = await chatApi.listChannelMembers(selectedChannelId)
-        setSelectedChannelMembers(memberResponse.members)
-      } catch {
-        // The channel update already succeeded; keep the current member view until the next refresh.
-      }
-      setChannelEditOpen(false)
-      setActionError(null)
-    } catch {
-      setActionError(t('errors.channelUpdate'))
-      throw new Error('channel update failed')
-    }
   }
 
   const startEditing = (message: Message) => { setEditingId(message.id); setEditDraft(message.body); setDraft('') }
