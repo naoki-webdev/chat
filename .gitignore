@@ -6,5 +6,6 @@ vite.config.js
 vite.config.d.ts
 backend/bin/
 test-screenshot*.png
+!test-screenshot-wide.png
 playwright-report/
 test-results/

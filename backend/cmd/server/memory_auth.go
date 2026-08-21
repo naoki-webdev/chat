@@ -48,6 +48,47 @@ func (r *memoryRepository) AuthenticateUser(_ context.Context, email, password s
 	return record.User, nil
 }
 
+func (r *memoryRepository) UpdateUserProfile(_ context.Context, userID string, request updateProfileRequest) (User, error) {
+	if err := validateUserName(request.Name); err != nil {
+		return User{}, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record, exists := r.users[userID]
+	if !exists || record.IsBot {
+		return User{}, ErrUnauthorized
+	}
+
+	name := strings.TrimSpace(request.Name)
+	handle := handleFromName(name)
+	if handle == "" {
+		handle = "user"
+	}
+	for otherID, other := range r.users {
+		if otherID != userID && other.Handle == handle {
+			handle += "-" + randomID()[:6]
+			break
+		}
+	}
+
+	record.Name = name
+	record.Handle = handle
+	record.Initials = initialsFromName(name)
+	r.users[userID] = record
+	for channelID, messages := range r.messages {
+		for index := range messages {
+			if r.owners[messages[index].ID] != userID {
+				continue
+			}
+			messages[index].Author = name
+			messages[index].Initials = record.Initials
+		}
+		r.messages[channelID] = messages
+	}
+	return record.User, nil
+}
+
 func (r *memoryRepository) FindUserBySession(_ context.Context, token string) (User, error) {
 	r.mu.RLock()
 	session, exists := r.sessions[tokenHash(token)]

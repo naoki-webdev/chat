@@ -234,7 +234,7 @@ export function useChatRealtime({
       socketSendRef.current = () => undefined
       subscription.close()
     }
-  }, [enabled, enqueueEventSync, enqueueRealtimeEvent])
+  }, [enabled, enqueueEventSync, enqueueRealtimeEvent, currentUser.name, currentUser.handle, currentUser.initials, currentUser.color])
 
   const send = useCallback((payload: unknown) => socketSendRef.current(payload), [])
 

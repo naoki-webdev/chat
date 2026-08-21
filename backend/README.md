@@ -10,6 +10,7 @@ POST   /api/auth/register
 POST   /api/auth/login
 POST   /api/auth/logout
 GET    /api/auth/me
+PATCH  /api/auth/me                 (要ログイン・表示名変更)
 GET    /api/channels                 (要ログイン)
 POST   /api/channels                 (要ログイン)
 GET    /api/channels/:channel_id/messages (要ログイン)

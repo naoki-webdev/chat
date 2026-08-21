@@ -135,6 +135,14 @@ export const chatApi = {
     return response.user
   },
 
+  async updateProfile(name: string) {
+    const response = await request<UserResponse>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+    return response.user
+  },
+
   async register(payload: { name: string; email: string; password: string }) {
     const response = await request<UserResponse>('/api/auth/register', {
       method: 'POST',

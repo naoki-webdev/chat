@@ -24,6 +24,7 @@ const (
 	maxChannelGroupLength  = 64
 	maxChannelKindLength   = 32
 	maxChannelDescription  = 500
+	maxUserNameLength      = 80
 	maxReactionLength      = 32
 	maxJSONBodyBytes       = 128 << 10
 	maxWebSocketFrameBytes = 64 << 10
@@ -174,6 +175,10 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type updateProfileRequest struct {
+	Name string `json:"name"`
+}
+
 type realtimeEvent struct {
 	Type            string   `json:"type"`
 	ChannelID       string   `json:"channel_id"`
@@ -246,6 +251,7 @@ type repository interface {
 	RemoveReaction(context.Context, string, string, string) (Message, EventRecord, error)
 	RegisterUser(context.Context, registerRequest) (User, error)
 	AuthenticateUser(context.Context, string, string) (User, error)
+	UpdateUserProfile(context.Context, string, updateProfileRequest) (User, error)
 	FindUserBySession(context.Context, string) (User, error)
 	CreateSession(context.Context, string) (string, error)
 	DeleteSession(context.Context, string) error

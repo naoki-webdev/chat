@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -90,14 +91,25 @@ func (s *server) requireUser(writer http.ResponseWriter, request *http.Request) 
 }
 
 func validateRegistration(payload registerRequest) error {
-	if strings.TrimSpace(payload.Name) == "" {
-		return invalidInput("name is required")
+	if err := validateUserName(payload.Name); err != nil {
+		return err
 	}
 	if !strings.Contains(normalizeEmail(payload.Email), "@") {
 		return invalidInput("a valid email is required")
 	}
 	if !validPassword(payload.Password) {
 		return invalidInput("password must be at least 8 characters")
+	}
+	return nil
+}
+
+func validateUserName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return invalidInput("name is required")
+	}
+	if utf8.RuneCountInString(name) > maxUserNameLength {
+		return invalidInput("name must be %d characters or fewer", maxUserNameLength)
 	}
 	return nil
 }

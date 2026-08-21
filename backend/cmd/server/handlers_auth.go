@@ -70,6 +70,23 @@ func (s *server) handleLogout(writer http.ResponseWriter, request *http.Request)
 }
 
 func (s *server) handleCurrentUser(writer http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodPatch {
+		user, ok := s.requireUser(writer, request)
+		if !ok {
+			return
+		}
+		var payload updateProfileRequest
+		if !decodeJSON(writer, request, &payload) {
+			return
+		}
+		updated, err := s.repository.UpdateUserProfile(request.Context(), user.ID, payload)
+		if err != nil {
+			writeRepositoryError(writer, err)
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]User{"user": updated})
+		return
+	}
 	if request.Method != http.MethodGet {
 		methodNotAllowed(writer)
 		return

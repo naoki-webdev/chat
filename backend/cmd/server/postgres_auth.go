@@ -66,6 +66,38 @@ func (r *postgresRepository) AuthenticateUser(ctx context.Context, email, passwo
 	return user, err
 }
 
+func (r *postgresRepository) UpdateUserProfile(ctx context.Context, userID string, request updateProfileRequest) (User, error) {
+	if err := validateUserName(request.Name); err != nil {
+		return User{}, err
+	}
+
+	name := strings.TrimSpace(request.Name)
+	handle := handleFromName(name)
+	if handle == "" {
+		handle = "user"
+	}
+	var handleExists bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE handle=$1 AND id<>$2)`, handle, userID).Scan(&handleExists); err != nil {
+		return User{}, err
+	}
+	if handleExists {
+		handle += "-" + randomID()[:6]
+	}
+
+	var user User
+	err := r.pool.QueryRow(ctx, `UPDATE users SET name=$1, handle=$2, initials=$3 WHERE id=$4 AND is_bot=false RETURNING id,name,email,handle,initials,color`, name, handle, initialsFromName(name), userID).Scan(&user.ID, &user.Name, &user.Email, &user.Handle, &user.Initials, &user.Color)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUnauthorized
+	}
+	if isUniqueViolation(err) {
+		return User{}, ErrConflict
+	}
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 func bcryptCompare(hash, password string) error {
 	if hash == "" {
 		return ErrUnauthorized

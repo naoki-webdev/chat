@@ -3,12 +3,8 @@ brand:
   workspaceEyebrow: ワークスペース
   workspaceName: Lumen Labs
 sidebar:
-  home: Orbitホーム
-  addWorkspace: ワークスペースを追加
-  addWorkspaceTitle: ワークスペース追加は準備中
   addChannel: "{group}にチャンネルを追加"
   help: ヘルプ
-  settings: ワークスペース設定
   jumpToConversation: 会話を検索
   quickLinks: クイックリンク
   inbox: 受信トレイ
@@ -24,6 +20,18 @@ sidebar:
   presence:
     online: オンライン
     away: 離席中
+profile:
+  title: プロフィール
+  open: プロフィールを開く
+  close: プロフィールを閉じる
+  displayName: 表示名
+  status: ステータス
+  save: 保存
+  saving: 保存中…
+  statuses:
+    online: オンライン
+    away: 離席中
+    offline: オフライン
 auth:
   loginTitle: チームにログイン
   registerTitle: アカウントを作成
@@ -162,5 +170,6 @@ errors:
   messageEdit: メッセージの編集に失敗しました。
   messageDelete: メッセージの削除に失敗しました。
   reactionUpdate: リアクションの更新に失敗しました。
+  profileUpdate: プロフィールを更新できませんでした。
   aiFailed: Orbit AIの応答に失敗しました。
   channelCreate: チャンネルの作成に失敗しました。

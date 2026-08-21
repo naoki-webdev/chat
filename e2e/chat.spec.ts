@@ -10,6 +10,7 @@ test('logs in and sends a realtime chat message', async ({ page }) => {
   await page.getByRole('button', { name: 'ログイン' }).click()
 
   await expect(page.getByText('Lumen Labs')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'ワークスペースを追加' })).toHaveCount(0)
   await expect(page.locator('.connection-pill')).toContainText(/接続済み|再接続中/)
 
   const composer = page.getByPlaceholder('#design-systemにメッセージを送信')
@@ -143,7 +144,7 @@ test('quick links and conversation search open real workspace views', async ({ p
   await page.getByRole('button', { name: /^# frontend/ }).click()
   await expect(page.getByRole('main').getByRole('heading', { name: 'frontend', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'ワークスペース設定' }).click()
+  await page.getByRole('button', { name: 'Lumen Labs', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'ワークスペース設定' })).toContainText('Lumen Labs')
   await page.getByRole('button', { name: '閉じる', exact: true }).click()
   await page.getByRole('button', { name: 'ヘルプ' }).click()
@@ -154,9 +155,8 @@ test('quick links and conversation search open real workspace views', async ({ p
   await expect(page.getByRole('dialog', { name: '会話を検索' })).toBeVisible()
   await page.getByRole('button', { name: '閉じる', exact: true }).click()
 
-  await expect(page.getByRole('button', { name: 'ワークスペースを追加' })).toBeDisabled()
   await page.getByRole('button', { name: 'frontend' }).click()
-  await page.getByRole('button', { name: 'Orbitホーム' }).click()
+  await page.getByRole('button', { name: 'general', exact: true }).click()
   await expect(page.getByRole('main').getByRole('heading', { name: 'general', exact: true })).toBeVisible()
 })
 
@@ -173,4 +173,36 @@ test('DM details show the actual conversation participants', async ({ page }) =>
   await expect(detailMembers.getByText('Taro Tanaka', { exact: true })).toBeVisible()
   await expect(detailMembers.getByText('Ayaka Mori', { exact: true })).toHaveCount(0)
   await expect(detailMembers.getByText('Ken Ito', { exact: true })).toHaveCount(0)
+})
+
+test('can edit the profile name and presence from the user card', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ログイン' }).click()
+  await expect(page.getByText('Lumen Labs')).toBeVisible()
+
+  await page.getByRole('button', { name: 'プロフィールを開く' }).first().click()
+  await expect(page.getByRole('dialog', { name: 'プロフィール' })).toBeVisible()
+  await page.getByRole('button', { name: 'プロフィールを閉じる' }).click()
+
+  const userCard = page.locator('.user-card')
+  await userCard.click()
+  const profile = page.getByRole('dialog', { name: 'プロフィール' })
+  await expect(profile).toBeVisible()
+  await page.getByRole('button', { name: 'frontend', exact: true }).click()
+  await expect(profile).toHaveCount(0)
+  await userCard.click()
+  await expect(profile).toBeVisible()
+  await profile.getByLabel('表示名').fill('Taro Tanaka UI')
+  await profile.getByRole('button', { name: '離席中', exact: true }).click()
+  await profile.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(userCard).toContainText('Taro Tanaka UI')
+  await expect(userCard).toContainText('離席中')
+
+  await userCard.click()
+  const reopenedProfile = page.getByRole('dialog', { name: 'プロフィール' })
+  await reopenedProfile.getByLabel('表示名').fill('Taro Tanaka')
+  await reopenedProfile.getByRole('button', { name: 'オンライン', exact: true }).click()
+  await reopenedProfile.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(userCard).toContainText('Taro Tanaka')
+  await expect(userCard).toContainText('オンライン')
 })

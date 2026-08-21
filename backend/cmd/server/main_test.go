@@ -101,6 +101,35 @@ func TestHealthAndAuthentication(t *testing.T) {
 	}
 }
 
+func TestUpdateUserProfile(t *testing.T) {
+	server := newServer()
+	handler := server.handler()
+	cookie := registerTestUser(t, handler, "profile@example.com")
+	payload, _ := json.Marshal(updateProfileRequest{Name: "Updated Profile"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authorizedRequest(http.MethodPatch, "/api/auth/me", payload, cookie))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("profile update status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var response map[string]User
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode updated profile: %v", err)
+	}
+	if response["user"].Name != "Updated Profile" || response["user"].Initials != "UP" {
+		t.Fatalf("unexpected updated profile: %+v", response["user"])
+	}
+
+	meRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(meRecorder, authorizedRequest(http.MethodGet, "/api/auth/me", nil, cookie))
+	var meResponse map[string]User
+	if err := json.NewDecoder(meRecorder.Body).Decode(&meResponse); err != nil {
+		t.Fatalf("decode current profile: %v", err)
+	}
+	if meResponse["user"].Name != "Updated Profile" {
+		t.Fatalf("updated profile was not persisted: %+v", meResponse["user"])
+	}
+}
+
 func TestSeededThreadCountMatchesReplies(t *testing.T) {
 	repository := newMemoryRepository()
 	thread, err := repository.ListThreadPage(context.Background(), "ds-1", "", 50)
