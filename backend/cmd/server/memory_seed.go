@@ -24,6 +24,7 @@ func newMemoryRepository() *memoryRepository {
 		users:            users,
 		byEmail:          map[string]string{"demo@example.com": "u-naoki", "ayaka@example.com": "u-ayaka", "ken@example.com": "u-ken", "mio@example.com": "u-mio", "orbit-ai@local": orbitAIUserID},
 		sessions:         make(map[string]memorySession),
+		aiDailyUsage:     make(map[string]int),
 	}
 }
 
@@ -82,9 +83,9 @@ func seededChannels() []Channel {
 
 func seededMessages() map[string][]Message {
 	return map[string][]Message{
-		"general":       {{ID: "g-1", ChannelID: "general", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "08:30", Body: "おはようございます。今週もよろしくお願いします！", Reactions: []Reaction{{Emoji: "☀️", Count: 5}}}, {ID: "g-2", ChannelID: "general", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "08:33", Body: "おはよう！リアルタイムチャットの初期画面を作り始めます。", Reactions: []Reaction{{Emoji: "🚀", Count: 2}}}},
-		"frontend":      {{ID: "f-1", ChannelID: "frontend", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "昨日", Body: "APIレスポンスの型定義、shared/typesに置いておくと使いやすそうです。", Reactions: []Reaction{{Emoji: "👍", Count: 3}}}},
-		"design-system": {{ID: "ds-1", ChannelID: "design-system", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "09:42", Body: "新しいカラートークンをまとめました。", Reactions: []Reaction{{Emoji: "✨", Count: 4}}, ThreadCount: 3}, {ID: "ds-r1", ChannelID: "design-system", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "09:50", Body: "カードの境界線は、もう少し薄くしてもよさそうです。", ParentMessageID: "ds-1"}, {ID: "ds-r2", ChannelID: "design-system", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "09:55", Body: "了解です。余白とのバランスを見て調整します。", ParentMessageID: "ds-1"}, {ID: "ds-r3", ChannelID: "design-system", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "10:05", Body: "明日のレビューで最終確認しましょう。", ParentMessageID: "ds-1"}},
+		"general":       {{ID: "g-1", ChannelID: "general", AuthorID: "u-ken", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "08:30", Body: "おはようございます。今週もよろしくお願いします！", Reactions: []Reaction{{Emoji: "☀️", Count: 5}}}, {ID: "g-2", ChannelID: "general", AuthorID: "u-naoki", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "08:33", Body: "おはよう！リアルタイムチャットの初期画面を作り始めます。", Reactions: []Reaction{{Emoji: "🚀", Count: 2}}}},
+		"frontend":      {{ID: "f-1", ChannelID: "frontend", AuthorID: "u-ayaka", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "昨日", Body: "APIレスポンスの型定義、shared/typesに置いておくと使いやすそうです。", Reactions: []Reaction{{Emoji: "👍", Count: 3}}}},
+		"design-system": {{ID: "ds-1", ChannelID: "design-system", AuthorID: "u-ayaka", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "09:42", Body: "新しいカラートークンをまとめました。", Reactions: []Reaction{{Emoji: "✨", Count: 4}}, ThreadCount: 3}, {ID: "ds-r1", ChannelID: "design-system", AuthorID: "u-ken", Author: "Ken Ito", Initials: "KI", Color: "#82ccdd", Time: "09:50", Body: "カードの境界線は、もう少し薄くしてもよさそうです。", ParentMessageID: "ds-1"}, {ID: "ds-r2", ChannelID: "design-system", AuthorID: "u-naoki", Author: "Taro Tanaka", Initials: "TT", Color: "#c56cf0", Time: "09:55", Body: "了解です。余白とのバランスを見て調整します。", ParentMessageID: "ds-1"}, {ID: "ds-r3", ChannelID: "design-system", AuthorID: "u-ayaka", Author: "Ayaka Mori", Initials: "AM", Color: "#f8c291", Time: "10:05", Body: "明日のレビューで最終確認しましょう。", ParentMessageID: "ds-1"}},
 		"roadmap":       {}, "research": {}, "ayaka": {}, "ken": {}, "orbit-ai": {},
 	}
 }

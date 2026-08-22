@@ -16,6 +16,7 @@ export type Reaction = { emoji: string; count: number; reacted?: boolean }
 
 export type Message = {
   id: string
+  authorID?: string
   author: string
   initials: string
   color: string
@@ -56,6 +57,7 @@ export function fromApiChannel(channel: ApiChannel): Channel {
 export function fromApiMessage(message: ApiMessage): Message {
   return {
     id: message.id,
+    authorID: message.author_id,
     author: message.author,
     initials: message.initials,
     color: message.color,
@@ -75,6 +77,7 @@ export function mergeMessage(existing: Message | undefined, incoming: Message): 
   const existingReactions = new Map((existing.reactions ?? []).map((reaction) => [reaction.emoji, reaction]))
   return {
     ...incoming,
+    authorID: incoming.authorID ?? existing.authorID,
     reactions: incoming.reactions?.map((reaction) => {
       if (reaction.reacted !== undefined) return reaction
       const previous = existingReactions.get(reaction.emoji)

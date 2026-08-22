@@ -123,7 +123,7 @@ func (r *memoryRepository) CreateMessage(_ context.Context, channelID, userID st
 		}
 	}
 	r.sequence++
-	message := Message{ID: "m-" + randomID(), ChannelID: channelID, Author: user.Name, Initials: user.Initials, Color: user.Color, Body: body, Time: time.Now().Format("15:04"), Reactions: []Reaction{}, ParentMessageID: parentMessageID, Sequence: r.sequence}
+	message := Message{ID: "m-" + randomID(), ChannelID: channelID, AuthorID: userID, Author: user.Name, Initials: user.Initials, Color: user.Color, Body: body, Time: time.Now().Format("15:04"), Reactions: []Reaction{}, ParentMessageID: parentMessageID, Sequence: r.sequence}
 	r.messages[channelID] = append(r.messages[channelID], message)
 	if parentMessageID != "" {
 		for index := range r.messages[channelID] {

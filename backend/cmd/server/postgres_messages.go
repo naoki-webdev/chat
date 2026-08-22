@@ -25,7 +25,16 @@ func (r *postgresRepository) ListMessagePage(ctx context.Context, channelID, bef
 		return MessagePage{}, invalidInput("invalid cursor")
 	}
 	limit = normalizeLimit(limit)
-	rows, err := r.pool.Query(ctx, messageSelect+` WHERE m.channel_id=$1 AND m.parent_message_id IS NULL AND ($2=0 OR m.created_sequence<$2) ORDER BY m.created_sequence DESC LIMIT $3`, channelID, beforeSequence, limit+1)
+	transaction, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return MessagePage{}, err
+	}
+	defer transaction.Rollback(ctx)
+	var cursor int64
+	if err := transaction.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+		return MessagePage{}, err
+	}
+	rows, err := transaction.Query(ctx, messageSelect+` WHERE m.channel_id=$1 AND m.parent_message_id IS NULL AND ($2=0 OR m.created_sequence<$2) ORDER BY m.created_sequence DESC LIMIT $3`, channelID, beforeSequence, limit+1)
 	if err != nil {
 		return MessagePage{}, err
 	}
@@ -52,8 +61,7 @@ func (r *postgresRepository) ListMessagePage(ctx context.Context, channelID, bef
 	if hasMore && len(messages) > 0 {
 		nextCursor = cursorString(messages[0].Sequence)
 	}
-	var cursor int64
-	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+	if err := transaction.Commit(ctx); err != nil {
 		return MessagePage{}, err
 	}
 	return MessagePage{Messages: messages, NextCursor: nextCursor, HasMore: hasMore, Cursor: cursor}, nil
@@ -64,15 +72,24 @@ func (r *postgresRepository) ListThreadPage(ctx context.Context, parentMessageID
 	if err != nil {
 		return MessagePage{}, invalidInput("invalid cursor")
 	}
+	transaction, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return MessagePage{}, err
+	}
+	defer transaction.Rollback(ctx)
+	var cursor int64
+	if err := transaction.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+		return MessagePage{}, err
+	}
 	var exists bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM messages WHERE id=$1)`, parentMessageID).Scan(&exists); err != nil {
+	if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM messages WHERE id=$1)`, parentMessageID).Scan(&exists); err != nil {
 		return MessagePage{}, err
 	}
 	if !exists {
 		return MessagePage{}, ErrNotFound
 	}
 	limit = normalizeLimit(limit)
-	rows, err := r.pool.Query(ctx, messageSelect+` WHERE m.parent_message_id=$1 AND ($2=0 OR m.created_sequence<$2) ORDER BY m.created_sequence DESC LIMIT $3`, parentMessageID, beforeSequence, limit+1)
+	rows, err := transaction.Query(ctx, messageSelect+` WHERE m.parent_message_id=$1 AND ($2=0 OR m.created_sequence<$2) ORDER BY m.created_sequence DESC LIMIT $3`, parentMessageID, beforeSequence, limit+1)
 	if err != nil {
 		return MessagePage{}, err
 	}
@@ -99,14 +116,13 @@ func (r *postgresRepository) ListThreadPage(ctx context.Context, parentMessageID
 	if hasMore && len(messages) > 0 {
 		nextCursor = cursorString(messages[0].Sequence)
 	}
-	var cursor int64
-	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+	if err := transaction.Commit(ctx); err != nil {
 		return MessagePage{}, err
 	}
 	return MessagePage{Messages: messages, NextCursor: nextCursor, HasMore: hasMore, Cursor: cursor}, nil
 }
 
-const messageSelect = `SELECT m.id, m.channel_id, u.name, u.initials, u.color, to_char(m.created_at AT TIME ZONE 'Asia/Tokyo', 'HH24:MI'), m.body, m.edited, m.reactions, m.thread_count, COALESCE(m.parent_message_id,''), (m.deleted_at IS NOT NULL), m.created_sequence FROM messages m JOIN users u ON u.id=m.author_id`
+const messageSelect = `SELECT m.id, m.channel_id, u.id, u.name, u.initials, u.color, to_char(m.created_at AT TIME ZONE 'Asia/Tokyo', 'HH24:MI'), m.body, m.edited, m.reactions, m.thread_count, COALESCE(m.parent_message_id,''), (m.deleted_at IS NOT NULL), m.created_sequence FROM messages m JOIN users u ON u.id=m.author_id`
 
 type rowScanner interface {
 	Scan(...any) error
@@ -115,7 +131,7 @@ type rowScanner interface {
 func scanMessage(row rowScanner) (Message, error) {
 	var message Message
 	var reactions []byte
-	if err := row.Scan(&message.ID, &message.ChannelID, &message.Author, &message.Initials, &message.Color, &message.Time, &message.Body, &message.Edited, &reactions, &message.ThreadCount, &message.ParentMessageID, &message.Deleted, &message.Sequence); err != nil {
+	if err := row.Scan(&message.ID, &message.ChannelID, &message.AuthorID, &message.Author, &message.Initials, &message.Color, &message.Time, &message.Body, &message.Edited, &reactions, &message.ThreadCount, &message.ParentMessageID, &message.Deleted, &message.Sequence); err != nil {
 		return Message{}, err
 	}
 	if message.Deleted {

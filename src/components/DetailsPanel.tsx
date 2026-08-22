@@ -33,7 +33,7 @@ export function DetailsPanel({ selectedChannel, members, summary, summaryLoading
         </>}
         <button className="summary-generate" onClick={onGenerateSummary} disabled={summaryLoading} aria-label={summary ? t('details.summary.update') : t('details.summary.summarize')}>{summaryLoading ? t('details.summary.loading') : summary ? t('details.summary.update') : t('details.summary.summarize')}<span>✦</span></button>
       </section>
-      <div className="details-section"><div className="details-section-title"><span>{t('details.members')}</span><span className="member-count">{members.length}</span></div><div className="member-list">{members.map((member) => <div className="member-row" key={member.handle}><Avatar initials={member.initials} color={member.color} presence={member.presence} size="small" /><div><strong>{member.name}</strong><small>{member.role}</small></div></div>)}</div></div>
+      <div className="details-section"><div className="details-section-title"><span>{t('details.members')}</span><span className="member-count">{members.length}</span></div><div className="member-list">{members.length === 0 ? <p className="details-empty">{t('details.membersEmpty')}</p> : members.map((member) => <div className="member-row" key={member.handle}><Avatar initials={member.initials} color={member.color} presence={member.presence} size="small" /><div><strong>{member.name}</strong><small>{member.role}</small></div></div>)}</div></div>
     </div>
     <div className="details-footer"><span className="status-check"><Icon name="check" size={14} /> {t('details.noUnread')}</span><span>{t('details.liveSync')}</span></div>
   </aside>

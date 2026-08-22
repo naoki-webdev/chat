@@ -110,6 +110,7 @@ details:
     update: 要点を更新
     summarize: 会話をまとめる
   members: メンバー
+  membersEmpty: メンバー情報を取得できませんでした。
   roles:
     productDesigner: プロダクトデザイナー
     frontendEngineer: フロントエンドエンジニア
@@ -186,6 +187,7 @@ errors:
   summary: 会話の要点を取得できませんでした。時間をおいてもう一度お試しください。
   sourceMissing: 元メッセージが現在の履歴にありません。過去のメッセージを読み込んでください。
   replySend: 返信の送信に失敗しました。
+  threadLoad: スレッドを読み込めませんでした。
   messageSend: メッセージの送信に失敗しました。
   messageEdit: メッセージの編集に失敗しました。
   messageDelete: メッセージの削除に失敗しました。
@@ -193,5 +195,5 @@ errors:
   profileUpdate: プロフィールを更新できませんでした。
   aiFailed: Orbit AIの応答に失敗しました。
   channelCreate: チャンネルの作成に失敗しました。
-  channelConflict: 同じ名前のチャンネルがすでにあります。
+  channelConflict: チャンネルを作成できませんでした。入力内容を確認してください。
   channelUpdate: チャンネルの更新に失敗しました。

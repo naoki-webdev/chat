@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +37,18 @@ func isAllowedOrigin(origin string) bool {
 		return origin == configured
 	}
 	return origin == "http://127.0.0.1:4174" || origin == "http://localhost:4174" || origin == "http://127.0.0.1:5173" || origin == "http://localhost:5173"
+}
+
+func validateFrontendOrigin() error {
+	origin := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
+	if origin == "" {
+		return errors.New("FRONTEND_ORIGIN must be set outside development and test environments")
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return errors.New("FRONTEND_ORIGIN must be an absolute http or https origin without a path")
+	}
+	return nil
 }
 
 func isLocalEnvironment() bool {

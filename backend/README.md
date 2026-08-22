@@ -55,7 +55,7 @@ WebSocketは、同じチャンネルに接続しているクライアントへ�
 }
 ```
 
-`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`と`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。AI呼び出しには同時実行・最短間隔に加えて、ユーザー単位の日次上限（`AI_DAILY_REQUEST_LIMIT`、既定100）があります。
+`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HTTP-only Cookieセッション、チャンネル、メッセージを保存します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`、`FRONTEND_ORIGIN`、`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。AI呼び出しには同時実行・最短間隔に加えて、PostgreSQLで共有するユーザー単位の日次上限（`AI_DAILY_REQUEST_LIMIT`、既定100）があります。
 
 リバースプロキシ配下で信頼できる`X-Forwarded-For` / `X-Real-IP`を使う場合だけ、`TRUST_PROXY_HEADERS=true`を設定します。既定ではこれらのヘッダーを信用せず、TCP接続元をレート制限のIPとして使います。
 

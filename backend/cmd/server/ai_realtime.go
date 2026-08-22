@@ -23,11 +23,6 @@ func shouldInvokeAI(channelID, body string) bool {
 const aiMinInterval = time.Second
 const defaultAIDailyRequestLimit = 100
 
-type aiDailyEntry struct {
-	Day      string
-	Requests int
-}
-
 func configuredAIDailyRequestLimit() int {
 	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("AI_DAILY_REQUEST_LIMIT")))
 	if err != nil || value < 1 {
@@ -57,27 +52,22 @@ func aiContextBody(message Message) string {
 	return fmt.Sprintf("[message_id=%s%s] %s", message.ID, threadLabel, strings.TrimSpace(message.Body))
 }
 
-func (s *server) acquireAI(key string) bool {
+func (s *server) acquireAI(ctx context.Context, key string) (bool, error) {
 	s.aiMu.Lock()
-	defer s.aiMu.Unlock()
 	now := time.Now()
 	if s.aiInFlight[key] >= 1 || now.Sub(s.aiLastRun[key]) < aiMinInterval {
-		return false
+		s.aiMu.Unlock()
+		return false, nil
 	}
 	userID := strings.SplitN(key, ":", 2)[0]
-	today := now.UTC().Format("2006-01-02")
-	daily := s.aiDaily[userID]
-	if daily.Day == today && daily.Requests >= s.aiDailyLimit {
-		return false
-	}
 	s.aiInFlight[key]++
 	s.aiLastRun[key] = now
-	if daily.Day != today {
-		daily = aiDailyEntry{Day: today}
+	s.aiMu.Unlock()
+	allowed, err := s.repository.ConsumeAIDailyQuota(ctx, userID, now, s.aiDailyLimit)
+	if err != nil || !allowed {
+		s.releaseAI(key)
 	}
-	daily.Requests++
-	s.aiDaily[userID] = daily
-	return true
+	return allowed, err
 }
 
 func (s *server) releaseAI(key string) {
@@ -91,17 +81,32 @@ func (s *server) releaseAI(key string) {
 }
 
 func (s *server) startAIReply(channelID, userID string, userMessage Message) {
-	if s.aiService == nil || userMessage.Author == "Orbit AI" {
+	if s.aiService == nil || userMessage.AuthorID == orbitAIUserID {
 		return
 	}
 	key := userID + ":" + channelID
-	if !s.acquireAI(key) {
-		log.Printf("Orbit AI request rate limited for user %s in channel %s", userID, channelID)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	temporaryID := "ai-" + randomID()
+	started := Message{
+		ID:        temporaryID,
+		ChannelID: channelID,
+		AuthorID:  orbitAIUserID,
+		Author:    "Orbit AI",
+		Initials:  "✦",
+		Color:     "linear-gradient(135deg, #8b5cf6, #22d3ee)",
+		Time:      time.Now().Format("15:04"),
+	}
+	s.broadcast(realtimeEvent{Type: "message.ai_started", ChannelID: channelID, MessageID: temporaryID, Message: pointerToMessage(started)})
+	allowed, acquireErr := s.acquireAI(ctx, key)
+	if acquireErr != nil || !allowed {
+		if acquireErr != nil {
+			log.Printf("Orbit AI quota check failed: %v", acquireErr)
+		}
+		s.broadcast(realtimeEvent{Type: "message.ai_failed", ChannelID: channelID, MessageID: temporaryID, Error: "Orbit AIは現在利用できません。しばらくしてから再試行してください。"})
 		return
 	}
 	defer s.releaseAI(key)
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
 	history := make([]ai.Message, 0, 50)
 	if messages, err := s.repository.ListAIContextMessages(ctx, channelID, 50); err == nil {
@@ -126,17 +131,6 @@ func (s *server) startAIReply(channelID, userID string, userMessage Message) {
 	} else {
 		log.Printf("could not load AI context for channel %s: %v", channelID, err)
 	}
-
-	temporaryID := "ai-" + randomID()
-	started := Message{
-		ID:        temporaryID,
-		ChannelID: channelID,
-		Author:    "Orbit AI",
-		Initials:  "✦",
-		Color:     "linear-gradient(135deg, #8b5cf6, #22d3ee)",
-		Time:      time.Now().Format("15:04"),
-	}
-	s.broadcast(realtimeEvent{Type: "message.ai_started", ChannelID: channelID, MessageID: temporaryID, Message: pointerToMessage(started)})
 
 	responseCharacters := 0
 	finalBody, err := s.aiService.Stream(ctx, history, userMessage.Body, func(delta string) error {

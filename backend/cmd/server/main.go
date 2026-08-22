@@ -24,7 +24,6 @@ type server struct {
 	aiMu         sync.Mutex
 	aiInFlight   map[string]int
 	aiLastRun    map[string]time.Time
-	aiDaily      map[string]aiDailyEntry
 	aiDailyLimit int
 	authLimiter  *authRateLimiter
 }
@@ -44,7 +43,6 @@ func newServerWithRepositoryAndAI(repository repository, service ai.Service) *se
 		hub:          newHub(),
 		aiInFlight:   make(map[string]int),
 		aiLastRun:    make(map[string]time.Time),
-		aiDaily:      make(map[string]aiDailyEntry),
 		aiDailyLimit: configuredAIDailyRequestLimit(),
 		authLimiter:  newAuthRateLimiter(),
 		upgrader: websocket.Upgrader{
@@ -64,6 +62,9 @@ func newProductionServer(ctx context.Context) (*server, error) {
 	}
 	if !isLocalEnvironment() {
 		if err := validateCookieConfig(); err != nil {
+			return nil, err
+		}
+		if err := validateFrontendOrigin(); err != nil {
 			return nil, err
 		}
 		if err := ai.ValidateProductionConfig(); err != nil {

@@ -6,10 +6,13 @@ import { ChannelEditDialog } from './components/ChannelEditDialog'
 import { DetailsPanel } from './components/DetailsPanel'
 import { ThreadPanel } from './components/ThreadPanel'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
-import { WorkspaceOverlay, type SavedMessageRef, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
-import { chatApi, type ApiChannelMember, type ApiChannelSummary, type ApiMember, type ApiMessage, type ApiUser } from './services/chatApi'
+import { WorkspaceOverlay, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
+import { chatApi, type ApiChannelMember, type ApiMember, type ApiMessage, type ApiUser } from './services/chatApi'
 import { useChannelManagement } from './hooks/useChannelManagement'
 import { useChatRealtime } from './hooks/useChatRealtime'
+import { useSavedMessages } from './hooks/useSavedMessages'
+import { useThread } from './hooks/useThread'
+import { useWorkSummary } from './hooks/useWorkSummary'
 import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, mergeMessage, type Channel, type Message } from './types/chat'
 import { t } from './i18n'
 
@@ -31,41 +34,26 @@ function App() {
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking')
   const [authUser, setAuthUser] = useState<ApiUser | null>(null)
   const [availableMembers, setAvailableMembers] = useState<ApiMember[]>([])
+  const [availableMembersLoaded, setAvailableMembersLoaded] = useState(false)
   const [selectedChannelMembers, setSelectedChannelMembers] = useState<ApiChannelMember[]>([])
+  const [selectedChannelMembersLoaded, setSelectedChannelMembersLoaded] = useState(false)
   const [myPresence, setMyPresence] = useState<NonNullable<Channel['presence']>>('online')
   const [messagePagination, setMessagePagination] = useState<Record<string, PaginationState>>({})
   const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({})
-  const [threadRoot, setThreadRoot] = useState<Message | null>(null)
-  const [threadReplies, setThreadReplies] = useState<Message[]>([])
-  const [threadDraft, setThreadDraft] = useState('')
-  const [threadLoading, setThreadLoading] = useState(false)
-  const [workSummary, setWorkSummary] = useState<ApiChannelSummary | null>(null)
-  const [summaryLoading, setSummaryLoading] = useState(false)
-  const [summaryError, setSummaryError] = useState<string | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [workspaceOverlay, setWorkspaceOverlay] = useState<WorkspaceOverlayKind | null>(null)
   const [channelCreateGroup, setChannelCreateGroup] = useState<string | null>(null)
   const [channelEditOpen, setChannelEditOpen] = useState(false)
-  const [savedMessages, setSavedMessages] = useState<SavedMessageRef[]>(() => {
-    try {
-      const stored = window.localStorage.getItem('orbit:saved-message-refs')
-      return stored ? JSON.parse(stored) as SavedMessageRef[] : []
-    } catch {
-      return []
-    }
-  })
+  const [savedMessages, setSavedMessages] = useSavedMessages(authUser?.id ?? null)
   const messageListRef = useRef<HTMLDivElement>(null)
   const selectedChannelRef = useRef(selectedChannelId)
   const loadMessagesRef = useRef<(channelId: string) => Promise<void>>(async () => undefined)
   const refreshChannelsRef = useRef<(advanceCursor?: boolean) => Promise<void>>(async () => undefined)
+  const refreshSelectedChannelMembersRef = useRef<() => Promise<void>>(async () => undefined)
   const advanceEventCursorRef = useRef<(cursor: number) => void>(() => undefined)
   const typingTimerRef = useRef<number | undefined>(undefined)
   const typingActiveRef = useRef(false)
-  const threadReplyIDsRef = useRef<Set<string>>(new Set())
-  const threadRootRef = useRef<Message | null>(null)
   const messageElementsRef = useRef<Record<string, HTMLElement | null>>({})
-  const summaryRequestSequenceRef = useRef(0)
-  const summaryAbortControllerRef = useRef<AbortController | null>(null)
   const channelRefreshSequenceRef = useRef(0)
 
   const backendReady = backendState === 'ready'
@@ -94,7 +82,7 @@ function App() {
   const conversationMembers = selectedChannel.kind === 'dm'
     ? [members.find((member) => member.handle === currentUser.handle) ?? members[2], { name: selectedChannel.name, handle: selectedChannel.id, initials: selectedChannel.initials ?? '?', role: selectedChannel.id === 'orbit-ai' ? t('details.roles.aiAssistant') : t('details.roles.member'), presence: selectedChannel.presence ?? 'offline', color: selectedChannel.color ?? '#394b6a' }]
     : members
-  const detailMembers = selectedChannelMembers.length > 0
+  const detailMembers = backendReady && selectedChannelMembersLoaded
     ? selectedChannelMembers.map((member) => ({
       name: member.name,
       handle: member.handle,
@@ -103,9 +91,13 @@ function App() {
       presence: member.handle === currentUser.handle ? myPresence : presenceFor(member.handle, 'offline'),
       color: member.color,
     }))
-    : conversationMembers
+    : backendReady ? [] : conversationMembers
   const currentChannelRole = selectedChannelMembers.find((member) => member.id === currentUser.id)?.role ?? 'member'
   const canEditSelectedChannel = selectedChannel.kind === 'channel' && (currentChannelRole === 'owner' || currentChannelRole === 'admin')
+  const summary = useWorkSummary({ backendReady, backendUnavailableMessage, selectedChannelId, selectedChannelRef })
+  const { workSummary, summaryLoading, summaryError, setSummaryError, generateSummary } = summary
+  const thread = useThread({ backendReady, selectedChannelRef, messages, setActionError })
+  const { threadRoot, setThreadRoot, threadReplies, setThreadReplies, threadDraft, setThreadDraft, threadLoading, threadRootRef, threadReplyIDsRef, openThread, closeThread, invalidateRequest } = thread
 
   const loadMessages = async (channelId: string, before?: string) => {
     const page = await chatApi.listMessages(channelId, before)
@@ -131,6 +123,14 @@ function App() {
     if (advanceCursor) advanceEventCursorRef.current(remote.cursor)
   }
   refreshChannelsRef.current = refreshChannels
+  const refreshSelectedChannelMembers = async (channelId = selectedChannelRef.current) => {
+    if (!backendReady) return
+    const response = await chatApi.listChannelMembers(channelId)
+    if (selectedChannelRef.current !== channelId) return
+    setSelectedChannelMembers(response.members)
+    setSelectedChannelMembersLoaded(true)
+  }
+  refreshSelectedChannelMembersRef.current = () => refreshSelectedChannelMembers()
   const realtime = useChatRealtime({
     enabled: backendReady,
     currentUser,
@@ -139,6 +139,7 @@ function App() {
     threadReplyIDsRef,
     loadMessagesRef,
     refreshChannelsRef,
+    refreshSelectedChannelMembersRef,
     setChannels,
     setMessages,
     setTypingUsers,
@@ -146,7 +147,7 @@ function App() {
     setThreadRoot,
     setThreadReplies,
   })
-  const { send, addThreadReply } = realtime
+  const { connection, send, addThreadReply } = realtime
   advanceEventCursorRef.current = realtime.advanceEventCursor
   const { openChannelCreate, createChannel, updateChannel } = useChannelManagement({
     backendReady,
@@ -167,25 +168,7 @@ function App() {
 
   useEffect(() => { selectedChannelRef.current = selectedChannelId }, [selectedChannelId])
   useEffect(() => { threadRootRef.current = threadRoot }, [threadRoot])
-  useEffect(() => {
-    summaryRequestSequenceRef.current += 1
-    summaryAbortControllerRef.current?.abort()
-    summaryAbortControllerRef.current = null
-    setSummaryLoading(false)
-    setWorkSummary(null)
-    setSummaryError(null)
-    setHighlightedMessageId(null)
-  }, [selectedChannelId])
-
-  useEffect(() => () => {
-    summaryRequestSequenceRef.current += 1
-    summaryAbortControllerRef.current?.abort()
-    summaryAbortControllerRef.current = null
-  }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem('orbit:saved-message-refs', JSON.stringify(savedMessages))
-  }, [savedMessages])
+  useEffect(() => { setHighlightedMessageId(null) }, [selectedChannelId])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -211,12 +194,16 @@ function App() {
         await refreshChannels(true)
         if (disposed) return
         setAvailableMembers([])
+        setAvailableMembersLoaded(false)
         setBackendState('ready')
         loaded = true
         void chatApi.listUsers().then((memberResponse) => {
-          if (!disposed) setAvailableMembers(memberResponse.users)
+          if (!disposed) {
+            setAvailableMembers(memberResponse.users)
+            setAvailableMembersLoaded(true)
+          }
         }).catch(() => {
-          // Member lookup is optional; chat remains usable without the picker data.
+          if (!disposed) setAvailableMembersLoaded(true)
         })
       } catch {
         if (!disposed) setBackendState('unavailable')
@@ -230,11 +217,18 @@ function App() {
   useEffect(() => {
     if (!backendReady) return
     let disposed = false
+    setSelectedChannelMembersLoaded(false)
     setSelectedChannelMembers([])
     void chatApi.listChannelMembers(selectedChannelId).then((response) => {
-      if (!disposed) setSelectedChannelMembers(response.members)
+      if (!disposed) {
+        setSelectedChannelMembers(response.members)
+        setSelectedChannelMembersLoaded(true)
+      }
     }).catch(() => {
-      if (!disposed) setSelectedChannelMembers([])
+      if (!disposed) {
+        setSelectedChannelMembers([])
+        setSelectedChannelMembersLoaded(true)
+      }
     })
     return () => { disposed = true }
   }, [backendReady, selectedChannelId])
@@ -277,6 +271,7 @@ function App() {
 
   const selectChannel = (channel: Channel) => {
     stopTyping()
+    invalidateRequest()
     selectedChannelRef.current = channel.id
     setSelectedChannelId(channel.id)
     threadRootRef.current = null
@@ -288,34 +283,6 @@ function App() {
     if (backendReady) {
       setChannels((current) => current.map((item) => item.id === channel.id ? { ...item, unread: 0 } : item))
       void chatApi.markChannelRead(channel.id).catch(() => setActionError(t('errors.readState')))
-    }
-  }
-
-  const generateSummary = async () => {
-    if (!backendReady) {
-      setSummaryError(backendUnavailableMessage)
-      return
-    }
-    const requestChannelId = selectedChannelId
-    const requestSequence = summaryRequestSequenceRef.current + 1
-    summaryRequestSequenceRef.current = requestSequence
-    summaryAbortControllerRef.current?.abort()
-    const controller = new AbortController()
-    summaryAbortControllerRef.current = controller
-    setSummaryLoading(true)
-    setSummaryError(null)
-    try {
-      const summary = await chatApi.summarizeChannel(requestChannelId, controller.signal)
-      if (controller.signal.aborted || requestSequence !== summaryRequestSequenceRef.current || selectedChannelRef.current !== requestChannelId) return
-      setWorkSummary(summary)
-    } catch {
-      if (controller.signal.aborted || requestSequence !== summaryRequestSequenceRef.current || selectedChannelRef.current !== requestChannelId) return
-      setSummaryError(t('errors.summary'))
-    } finally {
-      if (requestSequence === summaryRequestSequenceRef.current) {
-        summaryAbortControllerRef.current = null
-        setSummaryLoading(false)
-      }
     }
   }
 
@@ -335,27 +302,6 @@ function App() {
     if (!backendReady || !pagination?.hasMore || !pagination.nextCursor || pagination.loading) return
     setMessagePagination((current) => ({ ...current, [selectedChannelId]: { ...pagination, loading: true } }))
     void loadMessages(selectedChannelId, pagination.nextCursor).catch(() => setMessagePagination((current) => ({ ...current, [selectedChannelId]: { ...pagination, loading: false } })))
-  }
-
-  const openThread = async (message: Message) => {
-    threadRootRef.current = message
-    setThreadRoot(message)
-    setThreadDraft('')
-    setThreadLoading(true)
-    try {
-      if (backendReady) {
-        const page = await chatApi.listThreadMessages(message.id)
-        const loadedReplies = page.messages.map(fromApiMessage)
-        threadReplyIDsRef.current = new Set(loadedReplies.map((reply) => reply.id))
-        setThreadReplies(loadedReplies)
-      } else {
-        const loadedReplies = (messages[selectedChannelId] ?? []).filter((item) => item.parentMessageId === message.id)
-        threadReplyIDsRef.current = new Set(loadedReplies.map((reply) => reply.id))
-        setThreadReplies(loadedReplies)
-      }
-    } finally {
-      setThreadLoading(false)
-    }
   }
 
   const sendThreadReply = async () => {
@@ -479,12 +425,11 @@ function App() {
       throw new Error('backend unavailable')
     }
     try {
-      const previousName = currentUser.name
       const updatedUser = await chatApi.updateProfile(name)
       setAuthUser(updatedUser)
-      setMessages((current) => Object.fromEntries(Object.entries(current).map(([channelId, channelMessages]) => [channelId, channelMessages.map((message) => message.author === previousName ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message)])))
-      setThreadRoot((current) => current?.author === previousName ? { ...current, author: updatedUser.name, initials: updatedUser.initials } : current)
-      setThreadReplies((current) => current.map((message) => message.author === previousName ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message))
+      setMessages((current) => Object.fromEntries(Object.entries(current).map(([channelId, channelMessages]) => [channelId, channelMessages.map((message) => message.authorID === currentUser.id ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message)])))
+      setThreadRoot((current) => current?.authorID === currentUser.id ? { ...current, author: updatedUser.name, initials: updatedUser.initials } : current)
+      setThreadReplies((current) => current.map((message) => message.authorID === currentUser.id ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message))
       setActionError(null)
     } catch (error) {
       setActionError(t('errors.profileUpdate'))
@@ -506,9 +451,9 @@ function App() {
       {channelCreateGroup && <ChannelCreateDialog initialGroup={channelCreateGroup} groups={channelGroups} members={availableMembers} currentUserId={currentUser.id} onCreate={createChannel} onClose={() => setChannelCreateGroup(null)} />}
       {channelEditOpen && <ChannelEditDialog channel={selectedChannel} members={availableMembers} channelMembers={selectedChannelMembers} currentUserId={currentUser.id} currentUserRole={currentChannelRole} onSave={updateChannel} onClose={() => setChannelEditOpen(false)} />}
       <ChatPanel selectedChannel={selectedChannel} visibleMessages={visibleMessages} currentUser={currentUser} backendAvailable={backendReady} errorMessage={actionError ?? (backendUnavailable ? backendUnavailableMessage : undefined)} searchOpen={searchOpen} searchQuery={searchQuery} showDetails={showDetails} editingId={editingId} draft={draft} editDraft={editDraft} messageListRef={messageListRef} messageElementsRef={messageElementsRef} highlightedMessageId={highlightedMessageId} hasMore={messagePagination[selectedChannelId]?.hasMore ?? false} loadingOlder={messagePagination[selectedChannelId]?.loading ?? false} onLoadOlder={loadOlderMessages} onSearchOpenChange={setSearchOpen} onSearchQueryChange={setSearchQuery} onToggleDetails={() => setShowDetails((open) => !open)} canEditChannel={canEditSelectedChannel} onOpenChannelEdit={() => setChannelEditOpen(true)} onToggleReaction={toggleReaction} savedMessageIds={savedMessageIds} onToggleSaved={toggleSaved} onOpenThread={(message) => void openThread(message)} typingLabel={typingLabel} onStartEditing={startEditing} onDeleteMessage={(messageId) => void deleteMessage(messageId)} onDraftChange={onDraftChange} onEditDraftChange={setEditDraft} onComposerKeyDown={onComposerKeyDown} onSubmit={() => { if (editingId) void updateMessage(); else void sendMessage() }} onCancelEditing={() => { setEditingId(null); setEditDraft('') }} />
-      {workspaceOverlay && <WorkspaceOverlay kind={workspaceOverlay} channels={channels} messages={messages} savedMessages={savedMessages} onSelectChannel={selectChannel} onOpenThread={openThreadFromOverlay} onClose={() => setWorkspaceOverlay(null)} />}
+      {workspaceOverlay && <WorkspaceOverlay kind={workspaceOverlay} channels={channels} messages={messages} savedMessages={savedMessages} memberCount={availableMembersLoaded ? availableMembers.length : undefined} connection={connection} onSelectChannel={selectChannel} onOpenThread={openThreadFromOverlay} onClose={() => setWorkspaceOverlay(null)} />}
       {showDetails && <DetailsPanel selectedChannel={selectedChannel} members={detailMembers} summary={workSummary} summaryLoading={summaryLoading} summaryError={summaryError ?? undefined} onGenerateSummary={() => void generateSummary()} onJumpToMessage={jumpToMessage} onClose={() => setShowDetails(false)} />}
-      {threadRoot && <ThreadPanel root={threadRoot} replies={threadReplies} draft={threadDraft} loading={threadLoading} onDraftChange={setThreadDraft} onKeyDown={onThreadKeyDown} onSubmit={() => void sendThreadReply()} onClose={() => { threadRootRef.current = null; setThreadRoot(null); setThreadReplies([]); threadReplyIDsRef.current.clear() }} />}
+      {threadRoot && <ThreadPanel root={threadRoot} replies={threadReplies} draft={threadDraft} loading={threadLoading} onDraftChange={setThreadDraft} onKeyDown={onThreadKeyDown} onSubmit={() => void sendThreadReply()} onClose={closeThread} />}
     </div>
   )
 }

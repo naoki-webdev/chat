@@ -14,6 +14,7 @@ type UseChatRealtimeOptions = {
   threadReplyIDsRef: MutableRefObject<Set<string>>
   loadMessagesRef: MutableRefObject<(channelId: string) => Promise<void>>
   refreshChannelsRef: MutableRefObject<(advanceCursor?: boolean) => Promise<void>>
+  refreshSelectedChannelMembersRef: MutableRefObject<() => Promise<void>>
   setChannels: Dispatch<SetStateAction<Channel[]>>
   setMessages: Dispatch<SetStateAction<MessageMap>>
   setTypingUsers: Dispatch<SetStateAction<TypingUsers>>
@@ -30,6 +31,7 @@ export function useChatRealtime({
   threadReplyIDsRef,
   loadMessagesRef,
   refreshChannelsRef,
+  refreshSelectedChannelMembersRef,
   setChannels,
   setMessages,
   setTypingUsers,
@@ -70,6 +72,7 @@ export function useChatRealtime({
 
     if (event.type === 'channel.created' || event.type === 'channel.updated' || event.type === 'channel.member_added' || event.type === 'channel.member_removed') {
       void refreshChannelsRef.current().catch(() => undefined)
+      if (event.channel_id === selectedChannelRef.current) void refreshSelectedChannelMembersRef.current().catch(() => undefined)
       return
     }
 

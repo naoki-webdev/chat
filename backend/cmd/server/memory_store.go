@@ -25,4 +25,5 @@ type memoryRepository struct {
 	users            map[string]userRecord
 	byEmail          map[string]string
 	sessions         map[string]memorySession
+	aiDailyUsage     map[string]int
 }

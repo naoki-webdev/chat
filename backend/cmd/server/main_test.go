@@ -146,6 +146,36 @@ func TestSeededThreadCountMatchesReplies(t *testing.T) {
 	}
 }
 
+func TestUnreadAIContextKeepsNewestMessagesAndExactCount(t *testing.T) {
+	repository := newMemoryRepository()
+	ctx := context.Background()
+	if _, _, err := repository.CreateMessage(ctx, "general", "u-naoki", messageRequest{Body: "unread context oldest"}); err != nil {
+		t.Fatalf("create oldest unread message: %v", err)
+	}
+	if _, _, err := repository.CreateMessage(ctx, "general", "u-naoki", messageRequest{Body: "unread context newest"}); err != nil {
+		t.Fatalf("create newest unread message: %v", err)
+	}
+	items, unreadCount, err := repository.ListUnreadMessageContext(ctx, "u-naoki", "general", 1)
+	if err != nil {
+		t.Fatalf("list unread AI context: %v", err)
+	}
+	if unreadCount != 4 {
+		t.Fatalf("unread count = %d, want 4", unreadCount)
+	}
+	if len(items) != 1 || items[0].Body != "unread context newest" {
+		t.Fatalf("bounded unread context = %+v", items)
+	}
+}
+
+func TestChannelRequestRejectsUnsupportedTaxonomy(t *testing.T) {
+	if err := validateChannelRequest(channelRequest{Name: "room", Group: "Unknown", Kind: "channel"}); err == nil {
+		t.Fatal("unsupported channel group should be rejected")
+	}
+	if err := validateChannelRequest(channelRequest{Name: "room", Group: "Product", Kind: "broadcast"}); err == nil {
+		t.Fatal("unsupported channel kind should be rejected")
+	}
+}
+
 func TestProductionServerRequiresDatabaseURL(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("DATABASE_URL", "")
@@ -170,6 +200,24 @@ func TestProductionRequiresSecureCookies(t *testing.T) {
 	}
 }
 
+func TestProductionRequiresFrontendOrigin(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("FRONTEND_ORIGIN", "")
+	if err := validateFrontendOrigin(); err == nil {
+		t.Fatal("production should require a frontend origin")
+	}
+
+	t.Setenv("FRONTEND_ORIGIN", "https://chat.example.com/app")
+	if err := validateFrontendOrigin(); err == nil {
+		t.Fatal("frontend origin with a path should be rejected")
+	}
+
+	t.Setenv("FRONTEND_ORIGIN", "https://chat.example.com")
+	if err := validateFrontendOrigin(); err != nil {
+		t.Fatalf("valid frontend origin rejected: %v", err)
+	}
+}
+
 func TestAuthenticationRateLimit(t *testing.T) {
 	server := newServer()
 	handler := server.handler()
@@ -191,12 +239,17 @@ func TestAuthenticationRateLimit(t *testing.T) {
 func TestAIRequestDailyLimit(t *testing.T) {
 	server := newServer()
 	server.aiDailyLimit = 1
-	if !server.acquireAI("u-daily:general") {
+	allowed, err := server.acquireAI(context.Background(), "u-daily:general")
+	if err != nil || !allowed {
 		t.Fatal("first AI request should be allowed")
 	}
 	server.releaseAI("u-daily:general")
 	server.aiLastRun["u-daily:other"] = time.Now().Add(-2 * aiMinInterval)
-	if server.acquireAI("u-daily:other") {
+	allowed, err = server.acquireAI(context.Background(), "u-daily:other")
+	if err != nil {
+		t.Fatalf("daily quota check failed: %v", err)
+	}
+	if allowed {
 		t.Fatal("second AI request should be blocked by the daily user limit")
 	}
 }

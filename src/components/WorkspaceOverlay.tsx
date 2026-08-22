@@ -18,9 +18,11 @@ type Props = {
   onSelectChannel: (channel: Channel) => void
   onOpenThread: (channel: Channel, message: Message) => void
   onClose: () => void
+  memberCount?: number
+  connection: 'connected' | 'reconnecting'
 }
 
-export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSelectChannel, onOpenThread, onClose }: Props) {
+export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSelectChannel, onOpenThread, onClose, memberCount, connection }: Props) {
   const groupLabel = (group: string) => t(`sidebar.groups.${group}`)
   const [query, setQuery] = useState('')
   const channelById = useMemo(() => new Map(channels.map((channel) => [channel.id, channel])), [channels])
@@ -63,7 +65,7 @@ export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSe
           <div className="workspace-result-list">{searchResults.length === 0 && <div className="workspace-overlay-empty">{t('overlay.noResults')}</div>}{searchResults.map((channel) => <button className="workspace-result" key={channel.id} onClick={() => select(channel)}><span className="workspace-result-icon">{channel.kind === 'channel' ? '#' : <Avatar initials={channel.initials ?? ''} color={channel.color ?? '#394b6a'} size="small" />}</span><span><strong>{channel.name}</strong><small>{channel.kind === 'channel' ? groupLabel(channel.group) : t('overlay.directMessageType')}</small></span>{channel.unread > 0 && <span className="unread-badge">{channel.unread}</span>}</button>)}</div>
       </>}
 
-      {kind === 'workspace' && <div className="workspace-info-card"><div className="workspace-info-icon">LL</div><h3>{t('brand.workspaceName')} <span className="verified-mark">✦</span></h3><p>{t('overlay.workspaceDescription')}</p><div className="workspace-info-grid"><div><strong>{channels.length}</strong><small>{t('overlay.conversationCount')}</small></div><div><strong>4</strong><small>{t('overlay.memberCount')}</small></div><div><strong>{t('chat.connected')}</strong><small>{t('overlay.connectionState')}</small></div></div><p className="workspace-overlay-hint">{t('overlay.workspaceHint')}</p></div>}
+      {kind === 'workspace' && <div className="workspace-info-card"><div className="workspace-info-icon">LL</div><h3>{t('brand.workspaceName')} <span className="verified-mark">✦</span></h3><p>{t('overlay.workspaceDescription')}</p><div className="workspace-info-grid"><div><strong>{channels.length}</strong><small>{t('overlay.conversationCount')}</small></div><div><strong>{memberCount ?? '—'}</strong><small>{t('overlay.memberCount')}</small></div><div><strong>{t(`chat.${connection}`)}</strong><small>{t('overlay.connectionState')}</small></div></div><p className="workspace-overlay-hint">{t('overlay.workspaceHint')}</p></div>}
 
       {kind === 'help' && <div className="help-list"><div className="help-row"><span>{t('overlay.helpSearch')}</span><kbd>⌘ / Ctrl + K</kbd></div><div className="help-row"><span>{t('overlay.helpClose')}</span><kbd>Esc</kbd></div><div className="help-row"><span>{t('overlay.helpSend')}</span><kbd>Enter</kbd></div><div className="help-row"><span>{t('overlay.helpNewline')}</span><kbd>Shift + Enter</kbd></div><p className="workspace-overlay-hint">{t('overlay.helpDescription')}</p></div>}
 

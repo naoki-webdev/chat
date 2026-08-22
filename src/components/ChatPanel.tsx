@@ -60,7 +60,7 @@ export function ChatPanel({ selectedChannel, visibleMessages, currentUser, backe
       {visibleMessages.map((message, index) => {
         const previous = visibleMessages[index - 1]
         const showAuthor = !previous || previous.author !== message.author
-        const isMine = message.author === currentUser.name
+        const isMine = message.authorID === currentUser.id
         const saved = savedMessageIds.has(message.id)
         return <article ref={(element) => { messageElementsRef.current[message.id] = element }} className={`message-row ${showAuthor ? 'message-row-new' : 'message-row-compact'} ${highlightedMessageId === message.id ? 'message-row-highlighted' : ''}`} key={message.id}>
           {showAuthor ? <Avatar initials={message.initials} color={message.color} size="medium" /> : <span className="compact-time">{message.time}</span>}

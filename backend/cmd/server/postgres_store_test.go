@@ -74,6 +74,24 @@ func TestPostgresChannelMembershipIntegration(t *testing.T) {
 	if !selectedMember {
 		t.Fatal("selected PostgreSQL member was not added to private channel")
 	}
+	renamedChannel, renameEvents, err := repository.UpdateChannel(ctx, channel.ID, "u-naoki", channelUpdateRequest{Name: channel.Name + "-renamed", Description: channel.Description})
+	if err != nil {
+		t.Fatalf("rename PostgreSQL channel: %v", err)
+	}
+	if renamedChannel.Name != channel.Name+"-renamed" {
+		t.Fatalf("renamed channel name = %q", renamedChannel.Name)
+	}
+	foundRenameEvent := false
+	for _, event := range renameEvents {
+		if event.Event.Type == "channel.updated" {
+			foundRenameEvent = true
+			break
+		}
+	}
+	if !foundRenameEvent {
+		t.Fatalf("channel rename did not emit channel.updated: %+v", renameEvents)
+	}
+	channel = renamedChannel
 
 	application := newServerWithRepository(repository)
 	handler := application.handler()

@@ -23,11 +23,16 @@ func (r *memoryRepository) ListAIContextMessages(_ context.Context, channelID st
 	return items, nil
 }
 
-func (r *memoryRepository) ListUnreadMessages(_ context.Context, userID, channelID string) ([]Message, error) {
+func (r *memoryRepository) ListUnreadMessages(ctx context.Context, userID, channelID string) ([]Message, error) {
+	items, _, err := r.ListUnreadMessageContext(ctx, userID, channelID, 0)
+	return items, err
+}
+
+func (r *memoryRepository) ListUnreadMessageContext(_ context.Context, userID, channelID string, limit int) ([]Message, int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if !r.hasChannelLocked(channelID) {
-		return nil, ErrNotFound
+		return nil, 0, ErrNotFound
 	}
 	readAt := int64(0)
 	if states := r.readStates[userID]; states != nil {
@@ -46,5 +51,9 @@ func (r *memoryRepository) ListUnreadMessages(_ context.Context, userID, channel
 		}
 	}
 	sort.SliceStable(items, func(left, right int) bool { return items[left].Sequence < items[right].Sequence })
-	return items, nil
+	unreadCount := len(items)
+	if limit > 0 && len(items) > limit {
+		items = items[len(items)-limit:]
+	}
+	return items, unreadCount, nil
 }

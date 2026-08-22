@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -77,6 +78,14 @@ func validateChannelRequest(request channelRequest) error {
 	}
 	if utf8.RuneCountInString(strings.TrimSpace(request.Kind)) > maxChannelKindLength {
 		return invalidInput("kind must be %d characters or fewer", maxChannelKindLength)
+	}
+	group := strings.TrimSpace(request.Group)
+	if group != "" && group != "Engineering" && group != "Product" && group != "Direct messages" {
+		return invalidInput("group is not supported")
+	}
+	kind := strings.TrimSpace(request.Kind)
+	if kind != "" && kind != "channel" && kind != "dm" {
+		return invalidInput("kind is not supported")
 	}
 	if utf8.RuneCountInString(strings.TrimSpace(request.Description)) > maxChannelDescription {
 		return invalidInput("description must be %d characters or fewer", maxChannelDescription)
@@ -192,6 +201,7 @@ type Reaction struct {
 type Message struct {
 	ID              string     `json:"id"`
 	ChannelID       string     `json:"channel_id"`
+	AuthorID        string     `json:"author_id"`
 	Author          string     `json:"author"`
 	Initials        string     `json:"initials"`
 	Color           string     `json:"color"`
@@ -308,6 +318,8 @@ type repository interface {
 	ListMessagePage(context.Context, string, string, int) (MessagePage, error)
 	ListAIContextMessages(context.Context, string, int) ([]Message, error)
 	ListUnreadMessages(context.Context, string, string) ([]Message, error)
+	ListUnreadMessageContext(context.Context, string, string, int) ([]Message, int, error)
+	ConsumeAIDailyQuota(context.Context, string, time.Time, int) (bool, error)
 	ListThreadPage(context.Context, string, string, int) (MessagePage, error)
 	ListEvents(context.Context, string, int64, int) (EventPage, error)
 	CreateMessage(context.Context, string, string, messageRequest) (Message, EventRecord, error)

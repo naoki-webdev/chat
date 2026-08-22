@@ -37,6 +37,7 @@ export type ApiReaction = {
 export type ApiMessage = {
   id: string
   channel_id: string
+  author_id?: string
   author: string
   initials: string
   color: string
@@ -223,10 +224,10 @@ export const chatApi = {
     })
   },
 
-  async listThreadMessages(messageId: string, before?: string, limit = 50) {
+  async listThreadMessages(messageId: string, before?: string, limit = 50, signal?: AbortSignal) {
     const params = new URLSearchParams({ limit: String(limit) })
     if (before) params.set('before', before)
-    return request<MessagePage>(`/api/messages/${encodeURIComponent(messageId)}/replies?${params.toString()}`)
+    return request<MessagePage>(`/api/messages/${encodeURIComponent(messageId)}/replies?${params.toString()}`, { signal })
   },
 
   async createMessage(channelId: string, payload: { body: string; parent_message_id?: string }) {

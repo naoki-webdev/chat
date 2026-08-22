@@ -11,6 +11,7 @@ import (
 )
 
 const maxSummaryItems = 5
+const maxSummaryContextMessages = 200
 
 type summaryItem struct {
 	Text            string `json:"text"`
@@ -40,7 +41,7 @@ type summaryWire struct {
 }
 
 func (s *server) generateChannelSummary(parent context.Context, userID, channelID string) (channelSummary, error) {
-	unreadMessages, err := s.repository.ListUnreadMessages(parent, userID, channelID)
+	unreadMessages, unreadCount, err := s.repository.ListUnreadMessageContext(parent, userID, channelID, maxSummaryContextMessages)
 	if err != nil {
 		return channelSummary{}, err
 	}
@@ -57,7 +58,7 @@ func (s *server) generateChannelSummary(parent context.Context, userID, channelI
 		ChannelID:        channelID,
 		GeneratedAt:      time.Now().UTC().Format(time.RFC3339),
 		Scope:            scope,
-		UnreadCount:      len(unreadMessages),
+		UnreadCount:      unreadCount,
 		Decisions:        []summaryItem{},
 		ActionItems:      []summaryItem{},
 		Unresolved:       []summaryItem{},
@@ -92,7 +93,8 @@ func (s *server) generateChannelSummary(parent context.Context, userID, channelI
 	}
 
 	key := userID + ":" + channelID
-	if !s.acquireAI(key) {
+	allowed, err := s.acquireAI(parent, key)
+	if err != nil || !allowed {
 		return channelSummary{}, invalidInput("要点の作成は少し待ってからもう一度お試しください")
 	}
 	defer s.releaseAI(key)

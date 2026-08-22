@@ -17,11 +17,16 @@ func nullableString(value string) any {
 }
 
 func (r *postgresRepository) ListChannels(ctx context.Context, userID string) ([]Channel, int64, error) {
-	var cursor int64
-	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+	transaction, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.pool.Query(ctx, `
+	defer transaction.Rollback(ctx)
+	var cursor int64
+	if err := transaction.QueryRow(ctx, `SELECT COALESCE(max(sequence),0) FROM chat_events`).Scan(&cursor); err != nil {
+		return nil, 0, err
+	}
+	rows, err := transaction.Query(ctx, `
 SELECT c.id, c.name, c.channel_group, c.kind, c.description, COALESCE(c.presence,''), COALESCE(c.initials,''), COALESCE(c.color,''),
        COALESCE((SELECT count(*) FROM messages unread_message WHERE unread_message.channel_id=c.id AND unread_message.created_sequence > COALESCE((SELECT last_read_sequence FROM channel_read_states WHERE user_id=$1 AND channel_id=c.id),0)),0)
 	FROM channels c JOIN channel_members cm ON cm.channel_id=c.id AND cm.user_id=$1 ORDER BY c.created_at, c.id`, userID)
@@ -37,7 +42,13 @@ SELECT c.id, c.name, c.channel_group, c.kind, c.description, COALESCE(c.presence
 		}
 		channels = append(channels, channel)
 	}
-	return channels, cursor, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return nil, 0, err
+	}
+	return channels, cursor, nil
 }
 
 func (r *postgresRepository) HasChannel(ctx context.Context, id string) (bool, error) {
@@ -172,6 +183,13 @@ func (r *postgresRepository) UpdateChannel(ctx context.Context, channelID, userI
 		return Channel{}, nil, err
 	}
 	memberRows.Close()
+	var previousName, previousDescription string
+	if err := transaction.QueryRow(ctx, `SELECT name,description FROM channels WHERE id=$1`, channelID).Scan(&previousName, &previousDescription); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Channel{}, nil, ErrNotFound
+		}
+		return Channel{}, nil, err
+	}
 	var channel Channel
 	err = transaction.QueryRow(ctx, `
 UPDATE channels c
@@ -235,7 +253,7 @@ RETURNING c.id,c.name,c.channel_group,c.kind,c.description`, strings.TrimSpace(r
 	}
 	memberRows.Close()
 	events := make([]EventRecord, 0)
-	if strings.TrimSpace(request.Name) != channel.Name || strings.TrimSpace(request.Description) != channel.Description {
+	if previousName != channel.Name || previousDescription != channel.Description {
 		record, err := appendEventTx(ctx, transaction, realtimeEvent{Type: "channel.updated", ChannelID: channelID})
 		if err != nil {
 			return Channel{}, nil, err
