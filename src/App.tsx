@@ -7,25 +7,22 @@ import { DetailsPanel } from './components/DetailsPanel'
 import { ThreadPanel } from './components/ThreadPanel'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { WorkspaceOverlay, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
-import { chatApi, type ApiChannelMember, type ApiMember, type ApiMessage, type ApiUser } from './services/chatApi'
+import { chatApi, type ApiChannelMember, type ApiMember, type ApiUser } from './services/chatApi'
 import { useChannelManagement } from './hooks/useChannelManagement'
 import { useChatRealtime } from './hooks/useChatRealtime'
+import { useChatMessages } from './hooks/useChatMessages'
 import { useSavedMessages } from './hooks/useSavedMessages'
 import { useThread } from './hooks/useThread'
 import { useWorkSummary } from './hooks/useWorkSummary'
 import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, mergeMessage, type Channel, type Message } from './types/chat'
 import { t } from './i18n'
 
-type PaginationState = { nextCursor?: string; hasMore: boolean; loading: boolean }
 type BackendState = 'checking' | 'ready' | 'unavailable'
 
 function App() {
   const [channels, setChannels] = useState(initialChannels)
   const [selectedChannelId, setSelectedChannelId] = useState('design-system')
   const [messages, setMessages] = useState(initialMessages)
-  const [draft, setDraft] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState('')
   const [showDetails, setShowDetails] = useState(true)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -38,22 +35,17 @@ function App() {
   const [selectedChannelMembers, setSelectedChannelMembers] = useState<ApiChannelMember[]>([])
   const [selectedChannelMembersLoaded, setSelectedChannelMembersLoaded] = useState(false)
   const [myPresence, setMyPresence] = useState<NonNullable<Channel['presence']>>('online')
-  const [messagePagination, setMessagePagination] = useState<Record<string, PaginationState>>({})
   const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({})
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [workspaceOverlay, setWorkspaceOverlay] = useState<WorkspaceOverlayKind | null>(null)
   const [channelCreateGroup, setChannelCreateGroup] = useState<string | null>(null)
   const [channelEditOpen, setChannelEditOpen] = useState(false)
   const [savedMessages, setSavedMessages] = useSavedMessages(authUser?.id ?? null)
-  const messageListRef = useRef<HTMLDivElement>(null)
   const selectedChannelRef = useRef(selectedChannelId)
-  const loadMessagesRef = useRef<(channelId: string) => Promise<void>>(async () => undefined)
   const refreshChannelsRef = useRef<(advanceCursor?: boolean) => Promise<void>>(async () => undefined)
   const refreshSelectedChannelMembersRef = useRef<() => Promise<void>>(async () => undefined)
   const advanceEventCursorRef = useRef<(cursor: number) => void>(() => undefined)
-  const typingTimerRef = useRef<number | undefined>(undefined)
-  const typingActiveRef = useRef(false)
-  const messageElementsRef = useRef<Record<string, HTMLElement | null>>({})
+  const sendRealtimeRef = useRef<(payload: unknown) => void>(() => undefined)
   const channelRefreshSequenceRef = useRef(0)
 
   const backendReady = backendState === 'ready'
@@ -98,21 +90,41 @@ function App() {
   const { workSummary, summaryLoading, summaryError, setSummaryError, generateSummary } = summary
   const thread = useThread({ backendReady, selectedChannelRef, messages, setActionError })
   const { threadRoot, setThreadRoot, threadReplies, setThreadReplies, threadDraft, setThreadDraft, threadLoading, threadRootRef, threadReplyIDsRef, openThread, closeThread, invalidateRequest } = thread
+  const chatMessages = useChatMessages({
+    backendReady,
+    backendUnavailableMessage,
+    selectedChannelId,
+    selectedChannelRef,
+    messages,
+    setMessages,
+    setActionError,
+    setThreadReplies,
+    advanceEventCursorRef,
+    sendRealtime: (payload) => sendRealtimeRef.current(payload),
+  })
+  const {
+    draft,
+    setDraft,
+    editingId,
+    setEditingId,
+    editDraft,
+    setEditDraft,
+    messagePagination,
+    messageListRef,
+    messageElementsRef,
+    loadMessages,
+    loadMessagesRef,
+    loadOlderMessages,
+    stopTyping,
+    onDraftChange,
+    sendMessage,
+    updateMessage,
+    deleteMessage,
+    toggleReaction,
+    startEditing,
+    onComposerKeyDown,
+  } = chatMessages
 
-  const loadMessages = async (channelId: string, before?: string) => {
-    const page = await chatApi.listMessages(channelId, before)
-    advanceEventCursorRef.current(page.cursor)
-    setMessages((current) => {
-      const incoming = page.messages.filter((message) => !message.parent_message_id).map(fromApiMessage)
-      if (!before) return { ...current, [channelId]: incoming }
-      const existing = current[channelId] ?? []
-      const existingIDs = new Set(existing.map((message) => message.id))
-      return { ...current, [channelId]: [...incoming.filter((message) => !existingIDs.has(message.id)), ...existing] }
-    })
-    setMessagePagination((current) => ({ ...current, [channelId]: { nextCursor: page.next_cursor, hasMore: page.has_more, loading: false } }))
-  }
-
-  loadMessagesRef.current = (channelId) => loadMessages(channelId)
   const refreshChannels = async (advanceCursor = false) => {
     const requestSequence = channelRefreshSequenceRef.current + 1
     channelRefreshSequenceRef.current = requestSequence
@@ -148,6 +160,7 @@ function App() {
     setThreadReplies,
   })
   const { connection, send, addThreadReply } = realtime
+  sendRealtimeRef.current = send
   advanceEventCursorRef.current = realtime.advanceEventCursor
   const { openChannelCreate, createChannel, updateChannel } = useChannelManagement({
     backendReady,
@@ -247,28 +260,6 @@ function App() {
     if (list && !searchQuery) list.scrollTop = list.scrollHeight
   }, [selectedChannelId])
 
-  const stopTyping = () => {
-    if (!typingActiveRef.current) return
-    typingActiveRef.current = false
-    if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current)
-    typingTimerRef.current = undefined
-    send({ type: 'typing.stopped', channel_id: selectedChannelRef.current })
-  }
-
-  const onDraftChange = (value: string) => {
-    setDraft(value)
-    if (!backendReady || !value.trim()) {
-      stopTyping()
-      return
-    }
-    if (!typingActiveRef.current) {
-      typingActiveRef.current = true
-      send({ type: 'typing.started', channel_id: selectedChannelId })
-    }
-    if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current)
-    typingTimerRef.current = window.setTimeout(stopTyping, 1500)
-  }
-
   const selectChannel = (channel: Channel) => {
     stopTyping()
     invalidateRequest()
@@ -297,13 +288,6 @@ function App() {
     window.setTimeout(() => setHighlightedMessageId((current) => current === messageId ? null : current), 1800)
   }
 
-  const loadOlderMessages = () => {
-    const pagination = messagePagination[selectedChannelId]
-    if (!backendReady || !pagination?.hasMore || !pagination.nextCursor || pagination.loading) return
-    setMessagePagination((current) => ({ ...current, [selectedChannelId]: { ...pagination, loading: true } }))
-    void loadMessages(selectedChannelId, pagination.nextCursor).catch(() => setMessagePagination((current) => ({ ...current, [selectedChannelId]: { ...pagination, loading: false } })))
-  }
-
   const sendThreadReply = async () => {
     const body = threadDraft.trim()
     if (!body || !threadRoot) return
@@ -320,85 +304,6 @@ function App() {
     }
   }
 
-  const upsertMessage = (remoteMessage: ApiMessage) => {
-    const incoming = fromApiMessage(remoteMessage)
-    setMessages((current) => {
-      const existing = current[remoteMessage.channel_id] ?? []
-      const index = existing.findIndex((message) => message.id === incoming.id)
-      const next = [...existing]
-      if (index >= 0) next[index] = mergeMessage(existing[index], incoming)
-      else next.push(incoming)
-      return { ...current, [remoteMessage.channel_id]: next }
-    })
-  }
-
-  const sendMessage = async () => {
-    const body = draft.trim()
-    if (!body) return
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    stopTyping()
-    setDraft('')
-    try {
-      upsertMessage(await chatApi.createMessage(selectedChannelId, { body }))
-      setActionError(null)
-    } catch {
-      setDraft(body)
-      setActionError(t('errors.messageSend'))
-      return
-    }
-    window.requestAnimationFrame(() => { const list = messageListRef.current; if (list) list.scrollTop = list.scrollHeight })
-  }
-
-  const updateMessage = async () => {
-    const body = editDraft.trim()
-    if (!editingId || !body) return
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    try {
-      upsertMessage(await chatApi.updateMessage(editingId, body))
-      setActionError(null)
-    } catch {
-      setActionError(t('errors.messageEdit'))
-      return
-    }
-    setEditingId(null)
-    setEditDraft('')
-  }
-
-  const deleteMessage = async (messageId: string) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    try {
-      await chatApi.deleteMessage(messageId)
-      await loadMessages(selectedChannelId)
-      setThreadReplies((current) => current.filter((message) => message.id !== messageId))
-      setActionError(null)
-    } catch {
-      setActionError(t('errors.messageDelete'))
-    }
-  }
-
-  const toggleReaction = async (messageId: string, emoji: string) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    const message = (messages[selectedChannelId] ?? []).find((item) => item.id === messageId)
-    const existing = message?.reactions?.find((reaction) => reaction.emoji === emoji)
-    try {
-      upsertMessage(await (existing?.reacted ? chatApi.removeReaction(messageId, emoji) : chatApi.addReaction(messageId, emoji)))
-    } catch {
-      setActionError(t('errors.reactionUpdate'))
-    }
-  }
-
   const toggleSaved = (messageId: string) => {
     setSavedMessages((current) => {
       const exists = current.some((item) => item.channelId === selectedChannelId && item.messageId === messageId)
@@ -407,8 +312,6 @@ function App() {
     })
   }
 
-  const startEditing = (message: Message) => { setEditingId(message.id); setEditDraft(message.body); setDraft('') }
-  const onComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (editingId) void updateMessage(); else void sendMessage() } }
   const onThreadKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendThreadReply() } }
   const changePresence = (nextPresence: NonNullable<Channel['presence']>) => {
     if (!backendReady) {
