@@ -1,0 +1,179 @@
+brand:
+  authEyebrow: "ORBIT リアルタイムチャット"
+  workspaceName: Lumen Labs
+sidebar:
+  addChannel: "{group}にチャンネルを追加"
+  help: ヘルプ
+  jumpToConversation: 会話を検索
+  quickLinks: クイックリンク
+  inbox: 受信トレイ
+  saved: 保存済み
+  threads: スレッド
+  directMessages: 個別メッセージ
+  searchDirectMessages: 個別メッセージを探す
+  searchDirectMessagesTitle: 既存の個別メッセージを検索
+  groups:
+    Engineering: 開発
+    Product: プロダクト
+  presence:
+    online: オンライン
+    away: 離席中
+profile:
+  title: プロフィール
+  open: プロフィールを開く
+  close: プロフィールを閉じる
+  displayName: 表示名
+  status: ステータス
+  logout: ログアウト
+  save: 保存
+  saving: 保存中…
+  statuses:
+    online: オンライン
+    away: 離席中
+    offline: オフライン
+auth:
+  loginTitle: チームにログイン
+  registerTitle: アカウントを作成
+  name: 名前
+  email: メールアドレス
+  password: パスワード
+  submitLogin: ログイン
+  submitRegister: 登録して始める
+  connecting: 接続中…
+  switchToRegister: アカウントを新しく作る
+  switchToLogin: ログインに戻る
+  demo: "demo@example.com / demo-password"
+  namePlaceholder: Taro Tanaka
+  emailPlaceholder: you@example.com
+chat:
+  searchPlaceholder: この会話を検索
+  closeSearch: 検索を閉じる
+  searchMessages: メッセージを検索
+  connectionTitle: リアルタイム接続の状態
+  connected: 接続済み
+  reconnecting: 再接続中
+  showMembers: メンバーを表示
+  editChannel: チャンネルを編集
+  loadOlder: 過去のメッセージを読み込む
+  loading: 読み込み中…
+  searchResult: "{count}件のメッセージが見つかりました"
+  noMessages: まだメッセージがありません
+  directMessageFallback: 個別メッセージ
+  typing: "{name}が入力中…"
+  aiAnswering: Orbit AIが回答中
+  mine: あなた
+  edited: (編集済み)
+  addReaction: リアクションを追加
+  like: いいね
+  heart: ハート
+  removeSaved: 保存を解除
+  save: 保存
+  edit: 編集
+  delete: 削除
+  replies: "{count}件の返信"
+  reply: 返信する
+  sendPlaceholder: "{prefix}{name}にメッセージを送信"
+  editing: メッセージを編集中
+  cancel: キャンセル
+  saveEdit: 編集を保存
+  send: 送信
+details:
+  close: 詳細を閉じる
+  directDescription: 個別の会話
+  summary:
+    ariaLabel: 会話の要点
+    heading: 会話の要点
+    unreadCount: "未読 {count}件"
+    unreadAnalyzedCount: "要約対象 {count}件"
+    help: 未読を優先して、決定事項・次の作業・未解決事項を整理します。
+    loading: 会話をまとめています…
+    decisions: 決定事項
+    actions: 依頼・次の作業
+    unresolved: 未解決
+    none: 該当なし
+    chatterLabel: 雑談
+    chatterCount: "{count}件"
+    update: 要点を更新
+    summarize: 会話をまとめる
+  members: メンバー
+  membersEmpty: メンバー情報を取得できませんでした。
+  roles:
+    productDesigner: プロダクトデザイナー
+    frontendEngineer: フロントエンドエンジニア
+    productEngineer: プロダクトエンジニア
+    backendEngineer: バックエンドエンジニア
+    aiAssistant: AIアシスタント
+    owner: オーナー
+    admin: 管理者
+    member: メンバー
+channel:
+  createEyebrow: チャンネル
+  createTitle: チャンネルを作成
+  editEyebrow: チャンネル設定
+  editTitle: チャンネルを編集
+  nameLabel: チャンネル名
+  namePlaceholder: "例: api設計"
+  groupLabel: 所属
+  descriptionLabel: 説明
+  descriptionPlaceholder: このチャンネルで話す内容
+  membersLabel: 参加メンバー
+  membersHelp: 作成者は自動参加。オーナーとOrbit AIは固定です。
+  membersEmpty: 選択できるメンバーがいません
+  cancel: キャンセル
+  create: 作成
+  creating: 作成中…
+  save: 保存
+  saving: 保存中…
+overlay:
+  titles:
+    inbox: 受信トレイ
+    saved: 保存済み
+    threads: スレッド
+    workspace: ワークスペース設定
+    help: ヘルプ
+  searchTitle: 会話を検索
+  searchDialog: 会話を検索
+  close: 閉じる
+  searchPlaceholder: チャンネルやメンバーを検索
+  noResults: 一致する会話がありません
+  directMessageType: 個別メッセージ
+  conversationCount: 会話
+  memberCount: メンバー
+  connectionState: 接続
+  helpSearch: 会話を検索
+  helpClose: ダイアログを閉じる
+  helpSend: メッセージを送信
+  helpNewline: 改行
+  allRead: 未読はありません
+  openUnread: 未読メッセージを開く
+  noSaved: 保存済みメッセージはありません
+  savedNotLoaded: チャンネルを開いてメッセージを表示
+  unknownChannel: チャンネルが見つかりません
+  noThreads: スレッドはありません
+thread:
+  eyebrow: スレッド
+  title: 返信
+  close: スレッドを閉じる
+  loading: 読み込み中…
+  loadOlder: 過去の返信を読み込む
+  loadingOlder: 読み込み中…
+  empty: まだ返信はありません
+  placeholder: スレッドに返信
+  send: 返信を送信
+errors:
+  backendUnavailable: サーバーに接続できないため、変更操作を一時停止しています。
+  apiUnavailable: APIに接続できませんでした。Goサーバーを起動してください。
+  readState: 既読状態を保存できませんでした。
+  summary: 会話の要点を取得できませんでした。時間をおいてもう一度お試しください。
+  sourceMissing: 元メッセージが現在の履歴にありません。過去のメッセージを読み込んでください。
+  replySend: 返信の送信に失敗しました。
+  threadLoad: スレッドを読み込めませんでした。
+  messageSend: メッセージの送信に失敗しました。
+  messageEdit: メッセージの編集に失敗しました。
+  messageDelete: メッセージの削除に失敗しました。
+  reactionUpdate: リアクションの更新に失敗しました。
+  profileUpdate: プロフィールを更新できませんでした。
+  aiFailed: Orbit AIの応答に失敗しました。
+  channelCreate: チャンネルの作成に失敗しました。
+  channelConflict: チャンネルを作成できませんでした。入力内容を確認してください。
+  channelUpdate: チャンネルの更新に失敗しました。
