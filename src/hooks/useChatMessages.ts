@@ -1,10 +1,10 @@
 import { useRef, useState, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type SetStateAction } from 'react'
 import { chatApi, type ApiMessage } from '../services/chatApi'
-import { fromApiMessage, mergeMessage, type Message } from '../types/chat'
+import { fromApiMessage, type Message } from '../types/chat'
+import { type MessageMap, upsertMessageInMap } from '../types/messageState'
 import { t } from '../i18n'
 import { enqueueRealtimeTask, type RealtimeQueueRef } from './realtimeQueue'
 
-type MessageMap = Record<string, Message[]>
 type PaginationState = { nextCursor?: string; hasMore: boolean; loading: boolean }
 
 type UseChatMessagesOptions = {
@@ -125,14 +125,7 @@ export function useChatMessages({
 
   const upsertMessage = (remoteMessage: ApiMessage) => {
     const incoming = fromApiMessage(remoteMessage)
-    setMessages((current) => {
-      const existing = current[remoteMessage.channel_id] ?? []
-      const index = existing.findIndex((message) => message.id === incoming.id)
-      const next = [...existing]
-      if (index >= 0) next[index] = mergeMessage(existing[index], incoming)
-      else next.push(incoming)
-      return { ...current, [remoteMessage.channel_id]: next }
-    })
+    setMessages((current) => upsertMessageInMap(current, remoteMessage.channel_id, incoming))
   }
 
   const sendMessage = async () => {

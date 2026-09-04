@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { chatApi } from '../services/chatApi'
 import { fromApiMessage, type Message } from '../types/chat'
+import { type MessageMap } from '../types/messageState'
 import { t } from '../i18n'
 import { enqueueRealtimeTask, type RealtimeQueueRef } from './realtimeQueue'
 
-type MessageMap = Record<string, Message[]>
 type ThreadPaginationState = { nextCursor?: string; hasMore: boolean; loading: boolean }
 
 type UseThreadOptions = {

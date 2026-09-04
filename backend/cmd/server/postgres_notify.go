@@ -163,7 +163,6 @@ func (r *postgresRepository) eventListenerLoop(ctx context.Context, handler func
 				log.Printf("could not replay realtime events: %v", err)
 				break
 			}
-			firstConnection = false
 		}
 		connection.Release()
 		if ctx.Err() == nil {
@@ -227,11 +226,9 @@ func (r *postgresRepository) listPersistedEvents(ctx context.Context, after int6
 		if err := rows.Scan(&sequence, &eventType, &channelID, &messageID, &parentMessageID, &memberID, &payload); err != nil {
 			return nil, err
 		}
-		event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID, MemberID: memberID}
-		if len(payload) > 0 && string(payload) != "null" {
-			if err := json.Unmarshal(payload, &event.Message); err != nil {
-				return nil, err
-			}
+		event, err := decodePersistedRealtimeEvent(sequence, eventType, channelID, messageID, parentMessageID, memberID, payload)
+		if err != nil {
+			return nil, err
 		}
 		events = append(events, event)
 	}
@@ -249,11 +246,9 @@ func (r *postgresRepository) eventBySequence(ctx context.Context, sequence int64
 	if err := r.pool.QueryRow(queryContext, `SELECT event_type,channel_id,COALESCE(message_id,''),COALESCE(parent_message_id,''),COALESCE(member_id,''),payload FROM chat_events WHERE sequence=$1`, sequence).Scan(&eventType, &channelID, &messageID, &parentMessageID, &memberID, &payload); err != nil {
 		return realtimeEvent{}, err
 	}
-	event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID, MemberID: memberID}
-	if len(payload) > 0 && string(payload) != "null" {
-		if err := json.Unmarshal(payload, &event.Message); err != nil {
-			return realtimeEvent{}, err
-		}
+	event, err := decodePersistedRealtimeEvent(sequence, eventType, channelID, messageID, parentMessageID, memberID, payload)
+	if err != nil {
+		return realtimeEvent{}, err
 	}
 	return event, nil
 }

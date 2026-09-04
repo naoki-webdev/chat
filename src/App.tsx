@@ -6,7 +6,7 @@ import { ChannelEditDialog } from './components/ChannelEditDialog'
 import { DetailsPanel } from './components/DetailsPanel'
 import { ThreadPanel } from './components/ThreadPanel'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
-import { WorkspaceOverlay, type WorkspaceOverlayKind } from './components/WorkspaceOverlay'
+import { WorkspaceOverlay } from './components/WorkspaceOverlay'
 import { chatApi, type ApiMember, type ApiUser } from './services/chatApi'
 import { useChannelManagement } from './hooks/useChannelManagement'
 import { useChannelMembers } from './hooks/useChannelMembers'
@@ -15,8 +15,11 @@ import { useChatMessages } from './hooks/useChatMessages'
 import { useSavedMessages } from './hooks/useSavedMessages'
 import { useThread } from './hooks/useThread'
 import { useWorkSummary } from './hooks/useWorkSummary'
+import { useWorkspaceOverlays } from './hooks/useWorkspaceOverlays'
+import { useWorkspaceActions } from './hooks/useWorkspaceActions'
 import { enqueueRealtimeTask } from './hooks/realtimeQueue'
-import { demoUser, fromApiChannel, fromApiMessage, initialChannels, initialMessages, type Channel, type Message } from './types/chat'
+import { fromApiChannel, fromApiMessage, type Channel, type Message } from './types/chat'
+import { demoUser, initialChannels, initialMessages } from './types/demoData'
 import { t } from './i18n'
 
 type BackendState = 'checking' | 'ready' | 'unavailable'
@@ -25,7 +28,6 @@ function App() {
   const [channels, setChannels] = useState(initialChannels)
   const [selectedChannelId, setSelectedChannelId] = useState('design-system')
   const [messages, setMessages] = useState(initialMessages)
-  const [serverSearchResults, setServerSearchResults] = useState<Message[] | null>(null)
   const [showDetails, setShowDetails] = useState(true)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -38,10 +40,6 @@ function App() {
   const [myPresence, setMyPresence] = useState<NonNullable<Channel['presence']>>('online')
   const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({})
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
-  const [workspaceOverlay, setWorkspaceOverlay] = useState<WorkspaceOverlayKind | null>(null)
-  const [workspaceThreadItems, setWorkspaceThreadItems] = useState<Array<{ channelId: string; message: Message }>>([])
-  const [workspaceThreadCount, setWorkspaceThreadCount] = useState(0)
-  const [workspaceThreadsLoaded, setWorkspaceThreadsLoaded] = useState(false)
   const [channelCreateGroup, setChannelCreateGroup] = useState<string | null>(null)
   const [channelEditOpen, setChannelEditOpen] = useState(false)
   const [savedMessages, setSavedMessages] = useSavedMessages(authUser?.id ?? null)
@@ -61,32 +59,7 @@ function App() {
 
   const currentUser = authUser ?? demoUser
   const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? initialChannels[0]
-  const currentMessages = useMemo(() => messages[selectedChannelId] ?? [], [messages, selectedChannelId])
-  useEffect(() => {
-    const query = searchQuery.trim()
-    if (!backendReady || !query) {
-      setServerSearchResults(null)
-      return
-    }
-    const controller = new AbortController()
-    setServerSearchResults(null)
-    void chatApi.searchMessages(selectedChannelId, query, 100, controller.signal)
-      .then((page) => {
-        if (!controller.signal.aborted && selectedChannelRef.current === selectedChannelId) {
-          setServerSearchResults(page.messages.map(fromApiMessage))
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setServerSearchResults(null)
-      })
-    return () => controller.abort()
-  }, [backendReady, searchQuery, selectedChannelId])
-  const visibleMessages = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    if (!query) return currentMessages
-    if (serverSearchResults) return serverSearchResults
-    return currentMessages.filter((message) => `${message.author} ${message.body}`.toLowerCase().includes(query))
-  }, [currentMessages, searchQuery, serverSearchResults])
+  const { currentMessages, visibleMessages, workspaceOverlay, setWorkspaceOverlay, workspaceThreadItems, workspaceThreadCount, workspaceThreadsLoaded } = useWorkspaceOverlays({ backendReady, selectedChannelId, selectedChannelRef, messages, searchQuery })
   const channelGroups = ['Engineering', 'Product']
   const savedMessageIds = useMemo(() => new Set(savedMessages.filter((item) => item.channelId === selectedChannelId).map((item) => item.messageId)), [savedMessages, selectedChannelId])
   const unreadCount = useMemo(() => channels.reduce((total, channel) => total + channel.unread, 0), [channels])
@@ -187,6 +160,30 @@ function App() {
   const { connection, send, addThreadReply } = realtime
   sendRealtimeRef.current = send
   advanceEventCursorRef.current = realtime.advanceEventCursor
+  const workspaceActions = useWorkspaceActions({
+    backendReady,
+    backendUnavailableMessage,
+    currentUser,
+    selectedChannelRef,
+    threadRootRef,
+    threadReplyIDsRef,
+    stopTyping,
+    invalidateThreadRequest: invalidateRequest,
+    sendPresence: (presence) => send({ type: 'presence.changed', presence }),
+    setSelectedChannelId,
+    setSearchQuery,
+    setChannelEditOpen,
+    setChannels,
+    setMessages,
+    setAuthUser,
+    setAuthState,
+    setBackendState,
+    setMyPresence,
+    setThreadRoot,
+    setThreadReplies,
+    setActionError,
+  })
+  const { selectChannel, changePresence, updateProfile, logout } = workspaceActions
   const { openChannelCreate, createChannel, updateChannel } = useChannelManagement({
     backendReady,
     backendUnavailableMessage,
@@ -218,7 +215,7 @@ function App() {
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [])
+  }, [setWorkspaceOverlay])
 
   useEffect(() => {
     if (authState !== 'authenticated') return
@@ -253,23 +250,6 @@ function App() {
   }, [authState])
 
   useEffect(() => {
-    if (!backendReady || workspaceOverlay !== 'threads') return
-    const controller = new AbortController()
-    setWorkspaceThreadsLoaded(false)
-    void chatApi.listThreadRoots(100, controller.signal)
-      .then((page) => {
-        if (controller.signal.aborted) return
-        setWorkspaceThreadItems(page.messages.map((message) => ({ channelId: message.channel_id, message: fromApiMessage(message) })))
-        setWorkspaceThreadCount(page.total)
-        setWorkspaceThreadsLoaded(true)
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setWorkspaceThreadsLoaded(false)
-      })
-    return () => controller.abort()
-  }, [backendReady, workspaceOverlay])
-
-  useEffect(() => {
     if (!backendReady) return
     let disposed = false
     void loadMessagesRef.current(selectedChannelId).then(() => {
@@ -284,23 +264,6 @@ function App() {
     // Channel changes control the initial scroll position; search changes do not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChannelId])
-
-  const selectChannel = (channel: Channel) => {
-    stopTyping()
-    invalidateRequest()
-    selectedChannelRef.current = channel.id
-    setSelectedChannelId(channel.id)
-    threadRootRef.current = null
-    setThreadRoot(null)
-    setThreadReplies([])
-    threadReplyIDsRef.current.clear()
-    setSearchQuery('')
-    setChannelEditOpen(false)
-    if (backendReady) {
-      setChannels((current) => current.map((item) => item.id === channel.id ? { ...item, unread: 0 } : item))
-      void chatApi.markChannelRead(channel.id).catch(() => setActionError(t('errors.readState')))
-    }
-  }
 
   const jumpToMessage = (messageId: string, parentMessageId?: string) => {
     const element = messageElementsRef.current[messageId]
@@ -355,34 +318,7 @@ function App() {
   }
 
   const onThreadKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendThreadReply() } }
-  const changePresence = (nextPresence: NonNullable<Channel['presence']>) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      return
-    }
-    setMyPresence(nextPresence)
-    send({ type: 'presence.changed', presence: nextPresence })
-    setActionError(null)
-  }
-  const updateProfile = async (name: string) => {
-    if (!backendReady) {
-      setActionError(backendUnavailableMessage)
-      throw new Error('backend unavailable')
-    }
-    try {
-      const updatedUser = await chatApi.updateProfile(name)
-      setAuthUser(updatedUser)
-      setMessages((current) => Object.fromEntries(Object.entries(current).map(([channelId, channelMessages]) => [channelId, channelMessages.map((message) => message.authorID === currentUser.id ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message)])))
-      setThreadRoot((current) => current?.authorID === currentUser.id ? { ...current, author: updatedUser.name, initials: updatedUser.initials } : current)
-      setThreadReplies((current) => current.map((message) => message.authorID === currentUser.id ? { ...message, author: updatedUser.name, initials: updatedUser.initials } : message))
-      setActionError(null)
-    } catch (error) {
-      setActionError(t('errors.profileUpdate'))
-      throw error
-    }
-  }
   const typingLabel = Object.values(typingUsers[selectedChannelId] ?? {}).join('、')
-  const logout = async () => { try { await chatApi.logout() } finally { setAuthUser(null); setAuthState('anonymous'); setBackendState('checking') } }
   const openThreadFromOverlay = (channel: Channel, message: Message) => {
     selectChannel(channel)
     void openThread(message)

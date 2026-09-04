@@ -150,23 +150,8 @@ func (r *postgresRepository) seed(ctx context.Context) error {
 		return err
 	}
 	if !hasMessages {
-		seedMessages := []struct {
-			id, channelID, authorID, body string
-			reactions                     string
-			threadCount                   int
-			createdAt                     time.Time
-			parentMessageID               string
-		}{
-			{"g-1", "general", "u-ken", "おはようございます。今週もよろしくお願いします！", `[{"emoji":"☀️","count":5}]`, 0, time.Now().Add(-5 * time.Hour), ""},
-			{"g-2", "general", "u-naoki", "おはよう！リアルタイムチャットの初期画面を作り始めます。", `[{"emoji":"🚀","count":2}]`, 0, time.Now().Add(-4*time.Hour - 57*time.Minute), ""},
-			{"f-1", "frontend", "u-ayaka", "APIレスポンスの型定義、shared/typesに置いておくと使いやすそうです。", `[{"emoji":"👍","count":3}]`, 0, time.Now().Add(-24 * time.Hour), ""},
-			{"ds-1", "design-system", "u-ayaka", "新しいカラートークンをまとめました。", `[{"emoji":"✨","count":4}]`, 3, time.Now().Add(-3 * time.Hour), ""},
-			{"ds-r1", "design-system", "u-ken", "カードの境界線は、もう少し薄くしてもよさそうです。", `[]`, 0, time.Now().Add(-2*time.Hour - 52*time.Minute), "ds-1"},
-			{"ds-r2", "design-system", "u-naoki", "了解です。余白とのバランスを見て調整します。", `[]`, 0, time.Now().Add(-2*time.Hour - 47*time.Minute), "ds-1"},
-			{"ds-r3", "design-system", "u-ayaka", "明日のレビューで最終確認しましょう。", `[]`, 0, time.Now().Add(-2*time.Hour - 37*time.Minute), "ds-1"},
-		}
-		for _, message := range seedMessages {
-			if _, err := r.pool.Exec(ctx, `INSERT INTO messages (id, channel_id, author_id, body, reactions, thread_count, created_at, parent_message_id) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, message.id, message.channelID, message.authorID, message.body, message.reactions, message.threadCount, message.createdAt, nullableString(message.parentMessageID)); err != nil {
+		for _, message := range demoSeedMessages() {
+			if _, err := r.pool.Exec(ctx, `INSERT INTO messages (id, channel_id, author_id, body, reactions, thread_count, created_at, parent_message_id) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, message.ID, message.ChannelID, message.AuthorID, message.Body, seedReactionsJSON(message.Reactions), message.ThreadCount, time.Now().Add(message.CreatedAgo), nullableString(message.ParentMessageID)); err != nil {
 				return err
 			}
 		}
@@ -189,16 +174,11 @@ func (r *postgresRepository) ensureDesignSystemThreadReplies(ctx context.Context
 	if !rootExists {
 		return nil
 	}
-	replies := []struct {
-		id, authorID, body string
-		createdAt          time.Time
-	}{
-		{"ds-r1", "u-ken", "カードの境界線は、もう少し薄くしてもよさそうです。", time.Now().Add(-2*time.Hour - 52*time.Minute)},
-		{"ds-r2", "u-naoki", "了解です。余白とのバランスを見て調整します。", time.Now().Add(-2*time.Hour - 47*time.Minute)},
-		{"ds-r3", "u-ayaka", "明日のレビューで最終確認しましょう。", time.Now().Add(-2*time.Hour - 37*time.Minute)},
-	}
-	for _, reply := range replies {
-		if _, err := r.pool.Exec(ctx, `INSERT INTO messages (id, channel_id, author_id, body, reactions, thread_count, created_at, parent_message_id) VALUES ($1,'design-system',$2,$3,'[]'::jsonb,0,$4,'ds-1') ON CONFLICT (id) DO NOTHING`, reply.id, reply.authorID, reply.body, reply.createdAt); err != nil {
+	for _, reply := range demoSeedMessages() {
+		if reply.ParentMessageID != "ds-1" {
+			continue
+		}
+		if _, err := r.pool.Exec(ctx, `INSERT INTO messages (id, channel_id, author_id, body, reactions, thread_count, created_at, parent_message_id) VALUES ($1,'design-system',$2,$3,$4::jsonb,0,$5,'ds-1') ON CONFLICT (id) DO NOTHING`, reply.ID, reply.AuthorID, reply.Body, seedReactionsJSON(reply.Reactions), time.Now().Add(reply.CreatedAgo)); err != nil {
 			return err
 		}
 	}

@@ -44,7 +44,6 @@ func (s *server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 	if globalSubscription {
 		channelID = "*"
 	}
-	connection.SetReadLimit(maxWebSocketFrameBytes)
 	client := &client{connection: connection, channelID: channelID, user: user, server: s, hub: s.hub, send: make(chan []byte, 32), done: make(chan struct{})}
 	s.hub.add(client)
 	go client.writePump()

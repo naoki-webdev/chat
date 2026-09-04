@@ -3,7 +3,8 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { RealtimeEvent } from '../services/chatApi'
 import type { ApiUser } from '../services/chatApi'
 import type { Channel, Message } from '../types/chat'
-import { createRealtimeEventHandler, type MessageMap, type TypingUsers } from './realtimeEventHandler'
+import { createRealtimeEventHandler, type TypingUsers } from './realtimeEventHandler'
+import { type MessageMap } from '../types/messageState'
 
 function ref<T>(current: T): MutableRefObject<T> {
   return { current }

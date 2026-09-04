@@ -31,11 +31,9 @@ func (r *postgresRepository) ListEvents(ctx context.Context, userID string, afte
 		if err := rows.Scan(&sequence, &eventType, &channelID, &messageID, &parentMessageID, &memberID, &payload); err != nil {
 			return EventPage{}, err
 		}
-		event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID, MemberID: memberID}
-		if len(payload) > 0 && string(payload) != "null" {
-			if err := json.Unmarshal(payload, &event.Message); err != nil {
-				return EventPage{}, err
-			}
+		event, err := decodePersistedRealtimeEvent(sequence, eventType, channelID, messageID, parentMessageID, memberID, payload)
+		if err != nil {
+			return EventPage{}, err
 		}
 		events = append(events, event)
 	}
@@ -54,6 +52,16 @@ func (r *postgresRepository) ListEvents(ctx context.Context, userID string, afte
 		return EventPage{}, err
 	}
 	return EventPage{Events: events, NextCursor: nextCursor, HasMore: hasMore, Cursor: cursor}, nil
+}
+
+func decodePersistedRealtimeEvent(sequence int64, eventType, channelID, messageID, parentMessageID, memberID string, payload []byte) (realtimeEvent, error) {
+	event := realtimeEvent{Type: eventType, ChannelID: channelID, EventID: sequence, Sequence: sequence, MessageID: messageID, ParentMessageID: parentMessageID, MemberID: memberID}
+	if len(payload) > 0 && string(payload) != "null" {
+		if err := json.Unmarshal(payload, &event.Message); err != nil {
+			return realtimeEvent{}, err
+		}
+	}
+	return event, nil
 }
 
 type rowScannerSource interface {

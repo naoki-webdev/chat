@@ -199,10 +199,6 @@ func normalizeSummaryItems(raw json.RawMessage) json.RawMessage {
 	return encoded
 }
 
-func limitSummaryItems(items json.RawMessage) []summaryItem {
-	return limitSummaryItemList(decodeSummaryItems(items))
-}
-
 func decodeSummaryItems(items json.RawMessage) []summaryItem {
 	var result []summaryItem
 	if json.Unmarshal(items, &result) != nil {

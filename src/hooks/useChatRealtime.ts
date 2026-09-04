@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { chatApi, createChatSocket, type ApiUser, type RealtimeEvent } from '../services/chatApi'
-import { createRealtimeEventHandler, type MessageMap, type TypingUsers } from './realtimeEventHandler'
-import { syncRealtimeEvents } from './eventSync'
+import { chatApi, type ApiUser, type RealtimeEvent } from '../services/chatApi'
+import { createRealtimeEventHandler, type TypingUsers } from './realtimeEventHandler'
 import { enqueueRealtimeTask, type RealtimeQueueRef } from './realtimeQueue'
+import { useRealtimeSync } from './useRealtimeSync'
 import { type Channel, type Message } from '../types/chat'
+import { type MessageMap } from '../types/messageState'
+import { useRealtimeTransport, type RealtimeConnection } from './realtimeTransport'
 
 type UseChatRealtimeOptions = {
   enabled: boolean
@@ -47,10 +49,9 @@ export function useChatRealtime({
   setThreadRoot,
   setThreadReplies,
 }: UseChatRealtimeOptions) {
-  const [connection, setConnection] = useState<'connected' | 'reconnecting'>('reconnecting')
+  const [connection, setConnection] = useState<RealtimeConnection>('reconnecting')
   const eventCursorRef = useRef(0)
-  const socketSendRef = useRef<(payload: unknown) => void>(() => undefined)
-  const reconnectSocketRef = useRef<() => void>(() => undefined)
+  const transportRef = useRef<{ reconnect: () => void }>({ reconnect: () => undefined })
   const refreshChannelsWithRetryRef = useRef<() => Promise<void>>(async () => undefined)
   const readTimersRef = useRef<Record<string, number>>({})
   const lastReconnectRequestRef = useRef(0)
@@ -59,12 +60,14 @@ export function useChatRealtime({
     if (cursor > eventCursorRef.current) eventCursorRef.current = cursor
   }, [])
 
+  const listEvents = useCallback((cursor: number) => chatApi.listEvents(cursor), [])
+
   const requestReconnect = useCallback(() => {
     const now = Date.now()
     if (now - lastReconnectRequestRef.current < 1000) return
     lastReconnectRequestRef.current = now
     setConnection('reconnecting')
-    reconnectSocketRef.current()
+    transportRef.current.reconnect()
   }, [])
 
   const addThreadReply = useCallback((incoming: Message, channelId: string, countAsNew = false) => {
@@ -133,10 +136,6 @@ export function useChatRealtime({
       addThreadReply,
     }), [addThreadReply, advanceEventCursor, currentUser.id, refreshChannelsWithRetryRef, refreshSelectedChannelMembersRef, setAuthUser, setChannels, setMessages, setMyPresence, setThreadReplies, setThreadRoot, setTypingUsers, threadRootRef, selectedChannelRef])
 
-  const syncEvents = useCallback(async (after: number) => {
-    return syncRealtimeEvents(after, (cursor) => chatApi.listEvents(cursor), applyRealtimeEvent, advanceEventCursor)
-  }, [advanceEventCursor, applyRealtimeEvent])
-
   const enqueueRealtimeEvent = useCallback((event: RealtimeEvent) => {
     void enqueueRealtimeTask(realtimeQueueRef, async () => {
       if (!shouldApplyLiveRealtimeEvent(event, eventCursorRef.current)) return
@@ -148,39 +147,30 @@ export function useChatRealtime({
     }).catch(() => requestReconnect())
 	}, [applyRealtimeEvent, realtimeQueueRef, requestReconnect])
 
-  const enqueueEventSync = useCallback(() => {
-    void enqueueRealtimeTask(realtimeQueueRef, async () => {
-      if (!await syncEvents(eventCursorRef.current)) throw new Error('realtime event sync did not converge')
-      await refreshChannelsWithRetryRef.current()
-      await refreshSelectedChannelMembersRef.current()
-      await loadMessagesDirectRef.current(selectedChannelRef.current)
-    }).catch(() => requestReconnect())
-  }, [loadMessagesDirectRef, realtimeQueueRef, refreshSelectedChannelMembersRef, requestReconnect, selectedChannelRef, syncEvents])
+  const { enqueueEventSync } = useRealtimeSync({
+    realtimeQueueRef,
+    eventCursorRef,
+    selectedChannelRef,
+    loadMessagesDirectRef,
+    refreshChannelsWithRetryRef,
+    refreshSelectedChannelMembersRef,
+    listEvents,
+    onEvent: applyRealtimeEvent,
+    onCursor: advanceEventCursor,
+    requestReconnect,
+  })
 
-  useEffect(() => {
-    if (!enabled) {
-      setConnection('reconnecting')
-      return
-    }
-    const subscription = createChatSocket('all', {
-      onStatus: (status) => {
-        setConnection(status)
-        if (status === 'connected') enqueueEventSync()
-      },
-      onEvent: enqueueRealtimeEvent,
-    })
-    reconnectSocketRef.current = subscription.reconnect
-    socketSendRef.current = subscription.send
-    return () => {
-      socketSendRef.current = () => undefined
-      Object.values(readTimersRef.current).forEach((timer) => window.clearTimeout(timer))
-      readTimersRef.current = {}
-      reconnectSocketRef.current = () => undefined
-      subscription.close()
-    }
-  }, [enabled, enqueueEventSync, enqueueRealtimeEvent, currentUser.name, currentUser.handle, currentUser.initials, currentUser.color])
+  const onTransportStatus = useCallback((status: RealtimeConnection) => {
+    setConnection(status)
+    if (status === 'connected') enqueueEventSync()
+  }, [enqueueEventSync])
+  const transport = useRealtimeTransport({ enabled, onStatus: onTransportStatus, onEvent: enqueueRealtimeEvent })
+  transportRef.current = transport
 
-  const send = useCallback((payload: unknown) => socketSendRef.current(payload), [])
+  useEffect(() => () => {
+    Object.values(readTimersRef.current).forEach((timer) => window.clearTimeout(timer))
+    readTimersRef.current = {}
+  }, [])
 
-  return { connection, send, addThreadReply, advanceEventCursor }
+  return { connection, send: transport.send, addThreadReply, advanceEventCursor }
 }
