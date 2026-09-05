@@ -29,7 +29,7 @@ func (s *server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 			return
 		}
 		if !exists {
-			http.NotFound(writer, request)
+			writeError(writer, http.StatusNotFound, "resource not found")
 			return
 		}
 		if !s.requireChannelMember(writer, request, user, channelID) {

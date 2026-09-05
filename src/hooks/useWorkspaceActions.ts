@@ -4,7 +4,7 @@ import { t } from '../i18n'
 import { updateMessagesByAuthor, type MessageMap } from '../types/messageState'
 import type { Channel, Message } from '../types/chat'
 
-type AuthState = 'checking' | 'anonymous' | 'authenticated'
+type AuthState = 'checking' | 'anonymous' | 'authenticated' | 'unavailable'
 type Presence = NonNullable<Channel['presence']>
 
 type UseWorkspaceActionsOptions = {

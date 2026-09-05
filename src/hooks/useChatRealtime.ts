@@ -17,6 +17,7 @@ type UseChatRealtimeOptions = {
   realtimeQueueRef: RealtimeQueueRef
   refreshChannelsRef: MutableRefObject<(advanceCursor?: boolean) => Promise<void>>
   refreshSelectedChannelMembersRef: MutableRefObject<() => Promise<void>>
+  onReadStateError: () => void
   setChannels: Dispatch<SetStateAction<Channel[]>>
   setAuthUser: Dispatch<SetStateAction<ApiUser | null>>
   setMessages: Dispatch<SetStateAction<MessageMap>>
@@ -41,6 +42,7 @@ export function useChatRealtime({
   realtimeQueueRef,
   refreshChannelsRef,
   refreshSelectedChannelMembersRef,
+  onReadStateError,
   setChannels,
   setAuthUser,
   setMessages,
@@ -93,9 +95,9 @@ export function useChatRealtime({
     if (previousTimer !== undefined) window.clearTimeout(previousTimer)
     readTimersRef.current[channelId] = window.setTimeout(() => {
       delete readTimersRef.current[channelId]
-      void chatApi.markChannelRead(channelId).catch(() => undefined)
+      void chatApi.markChannelRead(channelId).catch(onReadStateError)
     }, 350)
-  }, [])
+  }, [onReadStateError])
   const scheduleSelectedChannelReadRef = useRef(scheduleSelectedChannelRead)
   scheduleSelectedChannelReadRef.current = scheduleSelectedChannelRead
 

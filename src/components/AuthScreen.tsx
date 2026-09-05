@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChatApiError, chatApi, type ApiUser } from '../services/chatApi'
 import { t } from '../i18n'
 
-export function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: ApiUser) => void }) {
+export function AuthScreen({ onAuthenticated, initialError }: { onAuthenticated: (user: ApiUser) => void; initialError?: string }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('demo@example.com')
   const [password, setPassword] = useState('demo-password')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError ?? '')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (initialError) setError(initialError)
+  }, [initialError])
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()

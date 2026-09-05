@@ -91,7 +91,7 @@ func (s *server) handleMessageRoutes(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if len(segments) != 1 || segments[0] == "" {
-		http.NotFound(writer, request)
+		writeError(writer, http.StatusNotFound, "resource not found")
 		return
 	}
 	messageID := segments[0]

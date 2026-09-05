@@ -7,7 +7,7 @@ import { DetailsPanel } from './components/DetailsPanel'
 import { ThreadPanel } from './components/ThreadPanel'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { WorkspaceOverlay } from './components/WorkspaceOverlay'
-import { chatApi, type ApiMember, type ApiUser } from './services/chatApi'
+import { ChatApiError, chatApi, type ApiMember, type ApiUser } from './services/chatApi'
 import { useChannelManagement } from './hooks/useChannelManagement'
 import { useChannelMembers } from './hooks/useChannelMembers'
 import { useChatRealtime } from './hooks/useChatRealtime'
@@ -33,7 +33,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [backendState, setBackendState] = useState<BackendState>('checking')
   const [actionError, setActionError] = useState<string | null>(null)
-  const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'authenticated'>('checking')
+  const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'unavailable' | 'authenticated'>('checking')
   const [authUser, setAuthUser] = useState<ApiUser | null>(null)
   const [availableMembers, setAvailableMembers] = useState<ApiMember[]>([])
   const [availableMembersLoaded, setAvailableMembersLoaded] = useState(false)
@@ -149,6 +149,7 @@ function App() {
     realtimeQueueRef,
     refreshChannelsRef,
     refreshSelectedChannelMembersRef,
+    onReadStateError: () => setActionError(t('errors.readState')),
     setChannels,
     setAuthUser,
     setMessages,
@@ -198,7 +199,9 @@ function App() {
   })
 
   useEffect(() => {
-    chatApi.me().then((user) => { setAuthUser(user); setAuthState('authenticated') }).catch(() => setAuthState('anonymous'))
+    chatApi.me().then((user) => { setAuthUser(user); setAuthState('authenticated') }).catch((error) => {
+      setAuthState(error instanceof ChatApiError && error.status === 401 ? 'anonymous' : 'unavailable')
+    })
   }, [])
 
   useEffect(() => { selectedChannelRef.current = selectedChannelId }, [selectedChannelId])
@@ -253,7 +256,7 @@ function App() {
     if (!backendReady) return
     let disposed = false
     void loadMessagesRef.current(selectedChannelId).then(() => {
-      if (!disposed) void chatApi.markChannelRead(selectedChannelId)
+      if (!disposed) void chatApi.markChannelRead(selectedChannelId).catch(() => setActionError(t('errors.readState')))
     }).catch(() => undefined)
     return () => { disposed = true }
   }, [backendReady, selectedChannelId])
@@ -324,7 +327,7 @@ function App() {
     void openThread(message)
   }
 
-  if (authState !== 'authenticated' || !authUser) return <AuthScreen onAuthenticated={(user) => { setAuthUser(user); setAuthState('authenticated') }} />
+  if (authState !== 'authenticated' || !authUser) return <AuthScreen initialError={authState === 'unavailable' ? t('errors.apiUnavailable') : undefined} onAuthenticated={(user) => { setAuthUser(user); setAuthState('authenticated') }} />
 
   return (
     <div className={`app-shell ${showDetails ? 'app-shell-with-details' : ''}`}>

@@ -45,7 +45,7 @@ func (s *server) handleChannelRoutes(writer http.ResponseWriter, request *http.R
 	}
 	segments := strings.Split(strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/channels/"), "/"), "/")
 	if len(segments) == 0 || len(segments) > 2 || (len(segments) == 2 && segments[1] != "messages" && segments[1] != "read" && segments[1] != "summary" && segments[1] != "members") {
-		http.NotFound(writer, request)
+		writeError(writer, http.StatusNotFound, "resource not found")
 		return
 	}
 	channelID := segments[0]
@@ -55,7 +55,7 @@ func (s *server) handleChannelRoutes(writer http.ResponseWriter, request *http.R
 		return
 	}
 	if !exists {
-		http.NotFound(writer, request)
+		writeError(writer, http.StatusNotFound, "resource not found")
 		return
 	}
 	if !s.requireChannelMember(writer, request, user, channelID) {
