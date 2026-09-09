@@ -56,3 +56,21 @@ func TestHubDisconnectsSlowClientOnBufferOverflow(t *testing.T) {
 	}
 	hub.remove(slowClient)
 }
+
+func TestHubDisconnectsRevokedSession(t *testing.T) {
+	hub := newHub()
+	client := &client{
+		sessionToken: "revoked-token",
+		done:         make(chan struct{}),
+	}
+	hub.add(client)
+
+	hub.disconnectSession("revoked-token")
+
+	select {
+	case <-client.done:
+	default:
+		t.Fatal("client should be disconnected when its session is revoked")
+	}
+	hub.remove(client)
+}

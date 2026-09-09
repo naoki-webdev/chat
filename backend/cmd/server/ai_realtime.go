@@ -195,6 +195,7 @@ func (s *server) startAIReply(requestID, channelID, userID string, userMessage M
 		s.broadcast(realtimeEvent{Type: "message.ai_failed", ChannelID: channelID, MessageID: temporaryID, Error: "Orbit AIの回答を保存できませんでした。"})
 		return
 	}
+	s.broadcast(record.Event)
 	// The final message is persisted as a normal message.created event, so a
 	// reconnect can recover it. Live clients receive the richer completed event
 	// and replace the temporary streaming message in place.

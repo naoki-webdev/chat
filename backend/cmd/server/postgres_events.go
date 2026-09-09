@@ -7,6 +7,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const realtimeEventSequenceLockID int64 = 0x4f524249545f4556
+
 func (r *postgresRepository) ListEvents(ctx context.Context, userID string, after int64, limit int) (EventPage, error) {
 	limit = normalizeLimit(limit)
 	transaction, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -69,6 +71,12 @@ type rowScannerSource interface {
 }
 
 func appendEventTx(ctx context.Context, transaction pgx.Tx, event realtimeEvent) (EventRecord, error) {
+	// BIGSERIAL values are allocated before commit. Serialize event allocation so
+	// a later transaction cannot commit with a larger sequence first and make an
+	// earlier committed event invisible to reconnecting clients.
+	if _, err := transaction.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, realtimeEventSequenceLockID); err != nil {
+		return EventRecord{}, err
+	}
 	payload := []byte(nil)
 	messageID := event.MessageID
 	if event.Message != nil {

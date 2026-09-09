@@ -137,12 +137,9 @@ export function createRealtimeEventHandler(options: RealtimeEventHandlerOptions)
 
     if (event.type === 'message.ai_completed') {
       if (!event.message) return
-      const incoming = { ...fromApiMessage(event.message), streaming: false }
       setMessages((current) => reduceMessageEvent(current, event))
       if (event.channel_id === selectedChannelRef.current) {
         scheduleSelectedChannelReadRef.current(event.channel_id)
-      } else if (incoming.authorID !== currentUserID) {
-        setChannels((current) => current.map((channel) => channel.id === event.channel_id ? { ...channel, unread: channel.unread + 1 } : channel))
       }
       return
     }

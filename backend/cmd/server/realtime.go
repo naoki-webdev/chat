@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"strings"
 	"sync"
@@ -12,14 +13,15 @@ import (
 )
 
 type client struct {
-	connection *websocket.Conn
-	channelID  string
-	user       User
-	server     *server
-	hub        *hub
-	send       chan []byte
-	done       chan struct{}
-	closeOnce  sync.Once
+	connection   *websocket.Conn
+	channelID    string
+	user         User
+	sessionToken string
+	server       *server
+	hub          *hub
+	send         chan []byte
+	done         chan struct{}
+	closeOnce    sync.Once
 }
 
 type websocketCommand struct {
@@ -34,9 +36,10 @@ type hub struct {
 }
 
 const (
-	pongWait   = 60 * time.Second
-	writeWait  = 10 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	pongWait                    = 60 * time.Second
+	writeWait                   = 10 * time.Second
+	pingPeriod                  = (pongWait * 9) / 10
+	sessionRevalidationInterval = 30 * time.Second
 )
 
 var realtimeRepositoryTimeout = 5 * time.Second
@@ -53,6 +56,16 @@ func (h *hub) remove(client *client) {
 	h.mu.Lock()
 	delete(h.clients, client)
 	h.mu.Unlock()
+}
+
+func (h *hub) disconnectSession(sessionToken string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		if client.sessionToken == sessionToken {
+			client.shutdown()
+		}
+	}
 }
 
 func (h *hub) broadcast(channelID string, payload []byte, memberIDs map[string]struct{}) {
@@ -110,6 +123,28 @@ func (c *client) shutdown() {
 			_ = c.connection.Close()
 		}
 	})
+}
+
+func (c *client) sessionMonitor() {
+	ticker := time.NewTicker(sessionRevalidationInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), realtimeRepositoryTimeout)
+			_, err := c.server.repository.FindUserBySession(ctx, c.sessionToken)
+			cancel()
+			if errors.Is(err, ErrUnauthorized) {
+				c.shutdown()
+				return
+			}
+			if err != nil {
+				log.Printf("session revalidation failed for WebSocket user %s: %v", c.user.ID, err)
+			}
+		}
+	}
 }
 
 func (c *client) handleCommand(command websocketCommand) {

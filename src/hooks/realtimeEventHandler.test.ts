@@ -95,6 +95,25 @@ describe('createRealtimeEventHandler', () => {
     expect(harness.getChannels()[0]?.unread).toBe(0)
   })
 
+  it('does not double count a persisted AI reply when completion follows creation', async () => {
+    const harness = createHarness()
+    const finalMessage = {
+      ...event().message!,
+      id: 'ai-final-1',
+      author_id: 'orbit-ai',
+      author: 'Orbit AI',
+    }
+
+    await harness.handler(event({ message: finalMessage }))
+    await harness.handler(event({
+      type: 'message.ai_completed',
+      message_id: 'ai-temporary-1',
+      message: finalMessage,
+    }))
+
+    expect(harness.getChannels()[0]?.unread).toBe(1)
+  })
+
   it('does not append an unloaded message for an update or reaction event', () => {
     const harness = createHarness()
 

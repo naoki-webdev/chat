@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 )
 
 func (s *server) handleWebSocket(writer http.ResponseWriter, request *http.Request) {
@@ -15,6 +16,11 @@ func (s *server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 	user, err := s.currentUser(request)
 	if err != nil {
 		writeRepositoryError(writer, err)
+		return
+	}
+	sessionCookie, err := request.Cookie(sessionCookieName)
+	if err != nil || strings.TrimSpace(sessionCookie.Value) == "" {
+		writeRepositoryError(writer, ErrUnauthorized)
 		return
 	}
 	channelID := request.URL.Query().Get("channel_id")
@@ -44,9 +50,10 @@ func (s *server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 	if globalSubscription {
 		channelID = "*"
 	}
-	client := &client{connection: connection, channelID: channelID, user: user, server: s, hub: s.hub, send: make(chan []byte, 32), done: make(chan struct{})}
+	client := &client{connection: connection, channelID: channelID, user: user, sessionToken: sessionCookie.Value, server: s, hub: s.hub, send: make(chan []byte, 32), done: make(chan struct{})}
 	s.hub.add(client)
 	go client.writePump()
+	go client.sessionMonitor()
 	client.readPump()
 }
 

@@ -87,6 +87,7 @@ func (s *server) handleLogout(writer http.ResponseWriter, request *http.Request)
 			writeRepositoryError(writer, err)
 			return
 		}
+		s.hub.disconnectSession(cookie.Value)
 	}
 	http.SetCookie(writer, expiredSessionCookie())
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
