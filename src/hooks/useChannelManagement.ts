@@ -57,8 +57,8 @@ export function useChannelManagement({
     }
     try {
       const channel = fromApiChannel(await chatApi.createChannel({ name: payload.name, group: payload.group, kind: 'channel', description: payload.description, member_ids: payload.memberIds }))
-      setChannels((current) => [...current, channel])
-      setMessages((current) => ({ ...current, [channel.id]: [] }))
+      setChannels((current) => current.some((item) => item.id === channel.id) ? current : [...current, channel])
+      setMessages((current) => current[channel.id] ? current : { ...current, [channel.id]: [] })
       setSelectedChannelId(channel.id)
       setChannelCreateGroup(null)
       setActionError(null)

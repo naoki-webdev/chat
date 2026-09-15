@@ -29,7 +29,7 @@ type UseChatRealtimeOptions = {
 
 export function shouldApplyLiveRealtimeEvent(event: RealtimeEvent, currentCursor: number) {
   const cursor = event.event_id ?? event.sequence
-  return cursor <= 0 || cursor > currentCursor || (event.type === 'message.ai_completed' && cursor === currentCursor)
+  return cursor <= 0 || cursor > currentCursor || event.type === 'message.ai_completed'
 }
 
 export function useChatRealtime({

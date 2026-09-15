@@ -45,10 +45,11 @@ function createHarness(selectedChannel = 'current-channel') {
   const refreshSelectedChannelMembers = vi.fn(async () => undefined)
   const addThreadReply = vi.fn()
   const scheduleSelectedChannelRead = vi.fn()
+  const eventCursorRef = ref(0)
   const handler = createRealtimeEventHandler({
     currentUserID: 'u-me',
     setAuthUser: vi.fn() as Dispatch<SetStateAction<ApiUser | null>>,
-    eventCursorRef: ref(0),
+    eventCursorRef,
     selectedChannelRef: ref(selectedChannel),
     threadRootRef: ref(null),
     refreshChannelsRef: ref(refreshChannels),
@@ -60,13 +61,30 @@ function createHarness(selectedChannel = 'current-channel') {
     setMyPresence: setter(() => myPresence, (value) => { myPresence = value }),
     setThreadRoot: setter(() => threadRoot, (value) => { threadRoot = value }),
     setThreadReplies: setter(() => threadReplies, (value) => { threadReplies = value }),
-    advanceEventCursor: vi.fn(),
+    advanceEventCursor: (cursor) => { eventCursorRef.current = Math.max(eventCursorRef.current, cursor) },
     addThreadReply,
   })
   return { handler, addThreadReply, scheduleSelectedChannelRead, refreshChannels, refreshSelectedChannelMembers, getChannels: () => channels, getMessages: () => messages }
 }
 
 describe('createRealtimeEventHandler', () => {
+  it.each(['message.created', 'message.updated', 'message.deleted'] as const)('retires a delayed AI placeholder after %s without reverting the newer event', async (type) => {
+    const harness = createHarness()
+    const finalMessage = { ...event().message!, id: 'ai-final', author_id: 'orbit-ai', body: 'original' }
+    await harness.handler(event({ type: 'message.ai_started', event_id: 0, sequence: 0, message: { ...finalMessage, id: 'ai-temp' } }))
+    await harness.handler(event({ message: finalMessage }))
+    await harness.handler(event({
+      type, event_id: 2, sequence: 2,
+      message_id: finalMessage.id,
+      message: type === 'message.deleted' ? undefined : { ...finalMessage, id: type === 'message.created' ? 'another' : finalMessage.id, body: 'newer' },
+    }))
+    await harness.handler(event({ type: 'message.ai_completed', message_id: 'ai-temp', message: finalMessage }))
+    expect(harness.getMessages()['other-channel'].some((message) => message.id === 'ai-temp')).toBe(false)
+    const persisted = harness.getMessages()['other-channel'].find((message) => message.id === finalMessage.id)
+    if (type === 'message.deleted') expect(persisted).toBeUndefined()
+    else expect(persisted?.body).toBe(type === 'message.updated' ? 'newer' : 'original')
+  })
+
   it('counts a new reply as unread even when the thread is not open', () => {
     const harness = createHarness()
 

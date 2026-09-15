@@ -50,7 +50,16 @@ export function createRealtimeEventHandler(options: RealtimeEventHandlerOptions)
     // PostgreSQL emits message.created and message.ai_completed with the
     // same persisted sequence. The completion replaces the temporary
     // streaming message and must survive the cursor de-duplication.
-    if (cursor > 0 && cursor <= eventCursorRef.current && !(event.type === 'message.ai_completed' && cursor === eventCursorRef.current)) return
+    if (cursor > 0 && cursor < eventCursorRef.current && event.type === 'message.ai_completed') {
+      // A later event may have edited or deleted the final message. Only
+      // retire the placeholder; never replay the older persisted content.
+      if (event.message_id) setMessages((current) => ({
+        ...current,
+        [event.channel_id]: (current[event.channel_id] ?? []).filter((message) => message.id !== event.message_id),
+      }))
+      return
+    }
+    if (cursor > 0 && cursor <= eventCursorRef.current && event.type !== 'message.ai_completed') return
     advanceEventCursor(cursor)
 
     if (event.type === 'channel.created' || event.type === 'channel.updated' || event.type === 'channel.member_added' || event.type === 'channel.member_removed') {

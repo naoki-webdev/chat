@@ -18,4 +18,8 @@ describe('shouldApplyLiveRealtimeEvent', () => {
   it('accepts an AI completion that shares the persisted message sequence', () => {
     expect(shouldApplyLiveRealtimeEvent({ ...event(3), type: 'message.ai_completed' }, 3)).toBe(true)
   })
+
+  it('accepts a delayed AI completion after a newer persisted event', () => {
+    expect(shouldApplyLiveRealtimeEvent({ ...event(3), type: 'message.ai_completed' }, 4)).toBe(true)
+  })
 })
