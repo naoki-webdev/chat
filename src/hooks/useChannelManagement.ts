@@ -20,9 +20,11 @@ type UseChannelManagementOptions = {
   backendReady: boolean
   backendUnavailableMessage: string
   selectedChannelId: string
+  sessionVersion: number
+  isSessionVersionActive: (version: number) => boolean
+  selectChannel: (channel: Channel) => void
   setChannels: Dispatch<SetStateAction<Channel[]>>
   setMessages: Dispatch<SetStateAction<Record<string, Message[]>>>
-  setSelectedChannelId: Dispatch<SetStateAction<string>>
   refreshSelectedChannelMembers: (channelId?: string) => Promise<void>
   setChannelCreateGroup: Dispatch<SetStateAction<string | null>>
   setChannelEditOpen: Dispatch<SetStateAction<boolean>>
@@ -33,9 +35,11 @@ export function useChannelManagement({
   backendReady,
   backendUnavailableMessage,
   selectedChannelId,
+  sessionVersion,
+  isSessionVersionActive,
+  selectChannel,
   setChannels,
   setMessages,
-  setSelectedChannelId,
   refreshSelectedChannelMembers,
   setChannelCreateGroup,
   setChannelEditOpen,
@@ -55,18 +59,21 @@ export function useChannelManagement({
       setActionError(backendUnavailableMessage)
       throw new Error('backend unavailable')
     }
+    const requestSessionVersion = sessionVersion
     try {
       const channel = fromApiChannel(await chatApi.createChannel({ name: payload.name, group: payload.group, kind: 'channel', description: payload.description, member_ids: payload.memberIds }))
+      if (!isSessionVersionActive(requestSessionVersion)) return
       setChannels((current) => current.some((item) => item.id === channel.id) ? current : [...current, channel])
       setMessages((current) => current[channel.id] ? current : { ...current, [channel.id]: [] })
-      setSelectedChannelId(channel.id)
+      selectChannel(channel)
       setChannelCreateGroup(null)
       setActionError(null)
     } catch (error) {
+      if (!isSessionVersionActive(requestSessionVersion)) return
       setActionError(error instanceof ChatApiError && error.status === 409 ? t('errors.channelConflict') : t('errors.channelCreate'))
       throw Object.assign(new Error('channel creation failed'), { cause: error })
     }
-  }, [backendReady, backendUnavailableMessage, setActionError, setChannelCreateGroup, setChannels, setMessages, setSelectedChannelId])
+  }, [backendReady, backendUnavailableMessage, isSessionVersionActive, selectChannel, sessionVersion, setActionError, setChannelCreateGroup, setChannels, setMessages])
 
   const updateChannel = useCallback(async (payload: ChannelUpdatePayload) => {
     if (!backendReady) {
@@ -79,7 +86,7 @@ export function useChannelManagement({
       try {
         await refreshSelectedChannelMembers(channel.id)
       } catch {
-        // The channel update already succeeded; keep the current member view until the next refresh.
+        // チャンネル更新はすでに成功しているため、次回更新までは現在のメンバー表示を維持します。
       }
       setChannelEditOpen(false)
       setActionError(null)

@@ -53,7 +53,7 @@ export function ChannelFormDialog({ mode, initialGroup = '', groups = [], initia
     try {
       await onSubmit({ name: trimmedName, description: description.trim(), group: isCreate ? group : undefined, memberIds: selectedMemberIDs })
     } catch {
-      // The parent shows the API error and keeps the dialog open.
+      // APIエラーは親コンポーネントで表示し、ダイアログは開いたままにします。
     } finally {
       setSaving(false)
     }

@@ -11,8 +11,8 @@ import (
 )
 
 func shouldSeedDemoData() bool {
-	// Demo credentials must never be created in a production database, even
-	// when a copied local .env enables the explicit seed flag.
+	// ローカルの.envをコピーして明示的なseedフラグが有効になっていても、
+	// 本番データベースにはデモ用の認証情報を決して作成しません。
 	if !isLocalEnvironment() {
 		return false
 	}

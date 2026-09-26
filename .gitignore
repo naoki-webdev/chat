@@ -9,3 +9,12 @@ test-screenshot*.png
 !test-screenshot-wide.png
 playwright-report/
 test-results/
+
+# すべての階層の環境変数ファイル
+**/.env
+**/.env.*
+!**/.env.example
+
+# Codex/OpenSkillsのプロジェクトローカルファイル
+/.claude/
+/AGENTS.md

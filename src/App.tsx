@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type SetStateAction } from 'react'
 import { AuthScreen } from './components/AuthScreen'
 import { ChatPanel } from './components/ChatPanel'
 import { ChannelCreateDialog } from './components/ChannelCreateDialog'
@@ -26,6 +26,7 @@ type BackendState = 'checking' | 'ready' | 'unavailable'
 
 function App() {
   const [channels, setChannels] = useState(initialChannels)
+  const [channelGroups, setChannelGroups] = useState(['Engineering', 'Product'])
   const [selectedChannelId, setSelectedChannelId] = useState('design-system')
   const [messages, setMessages] = useState(initialMessages)
   const [showDetails, setShowDetails] = useState(true)
@@ -35,11 +36,21 @@ function App() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [authState, setAuthState] = useState<'checking' | 'anonymous' | 'unavailable' | 'authenticated'>('checking')
   const [authUser, setAuthUser] = useState<ApiUser | null>(null)
+  const authUserRef = useRef<ApiUser | null>(null)
+  const sessionVersionRef = useRef(0)
+  const setAuthUserWithRef = useCallback((action: SetStateAction<ApiUser | null>) => {
+    const nextUser = typeof action === 'function' ? action(authUserRef.current) : action
+    if (authUserRef.current?.id !== nextUser?.id || (authUserRef.current !== null && nextUser === null)) sessionVersionRef.current += 1
+    authUserRef.current = nextUser
+    setAuthUser(nextUser)
+  }, [])
+  const isSessionVersionActive = useCallback((version: number) => sessionVersionRef.current === version, [])
   const [availableMembers, setAvailableMembers] = useState<ApiMember[]>([])
   const [availableMembersLoaded, setAvailableMembersLoaded] = useState(false)
   const [myPresence, setMyPresence] = useState<NonNullable<Channel['presence']>>('online')
   const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({})
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
+  const [pendingSavedJump, setPendingSavedJump] = useState<{ channelId: string; messageId: string } | null>(null)
   const [channelCreateGroup, setChannelCreateGroup] = useState<string | null>(null)
   const [channelEditOpen, setChannelEditOpen] = useState(false)
   const [savedMessages, setSavedMessages] = useSavedMessages(authUser?.id ?? null)
@@ -50,6 +61,9 @@ function App() {
   const sendRealtimeRef = useRef<(payload: unknown) => void>(() => undefined)
   const channelRefreshSequenceRef = useRef(0)
   const realtimeQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const invalidateChannelRefresh = useCallback(() => {
+    channelRefreshSequenceRef.current += 1
+  }, [])
 
   const backendReady = backendState === 'ready'
   const backendUnavailable = backendState === 'unavailable'
@@ -60,7 +74,6 @@ function App() {
   const currentUser = authUser ?? demoUser
   const selectedChannel = channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? initialChannels[0]
   const { currentMessages, visibleMessages, workspaceOverlay, setWorkspaceOverlay, workspaceThreadItems, workspaceThreadCount, workspaceThreadsLoaded } = useWorkspaceOverlays({ backendReady, selectedChannelId, selectedChannelRef, messages, searchQuery })
-  const channelGroups = ['Engineering', 'Product']
   const savedMessageIds = useMemo(() => new Set(savedMessages.filter((item) => item.channelId === selectedChannelId).map((item) => item.messageId)), [savedMessages, selectedChannelId])
   const unreadCount = useMemo(() => channels.reduce((total, channel) => total + channel.unread, 0), [channels])
   const localThreadCount = useMemo(() => Object.values(messages).flat().filter((message) => (message.threadCount ?? 0) > 0).length, [messages])
@@ -106,6 +119,8 @@ function App() {
   })
   const {
     draft,
+    setDraft,
+    outgoingMessages,
     editingId,
     setEditingId,
     editDraft,
@@ -115,10 +130,13 @@ function App() {
     messageElementsRef,
     loadMessages,
     loadMessagesDirectRef,
+    invalidateMessageRequests,
     loadOlderMessages,
+    loadMessageUntil,
     stopTyping,
     onDraftChange,
     sendMessage,
+    retryOutgoingMessage,
     updateMessage,
     deleteMessage,
     toggleReaction,
@@ -134,6 +152,7 @@ function App() {
     const remote = await chatApi.listChannels()
     if (requestSequence !== channelRefreshSequenceRef.current) return
     setChannels(remote.channels.map(fromApiChannel))
+    if (remote.groups?.length) setChannelGroups(remote.groups)
     setSelectedChannelId((current) => remote.channels.some((channel) => channel.id === current) ? current : remote.channels[0]?.id ?? current)
     if (advanceCursor) advanceEventCursorRef.current(remote.cursor)
   }
@@ -151,14 +170,14 @@ function App() {
     refreshSelectedChannelMembersRef,
     onReadStateError: () => setActionError(t('errors.readState')),
     setChannels,
-    setAuthUser,
+    setAuthUser: setAuthUserWithRef,
     setMessages,
     setTypingUsers,
     setMyPresence,
     setThreadRoot,
     setThreadReplies,
   })
-  const { connection, send, addThreadReply } = realtime
+  const { connection, send, addThreadReply, clearScheduledChannelReads } = realtime
   sendRealtimeRef.current = send
   advanceEventCursorRef.current = realtime.advanceEventCursor
   const workspaceActions = useWorkspaceActions({
@@ -168,30 +187,50 @@ function App() {
     selectedChannelRef,
     threadRootRef,
     threadReplyIDsRef,
+    invalidateMessageRequests,
+    invalidateChannelRefresh,
+    clearScheduledChannelReads,
     stopTyping,
     invalidateThreadRequest: invalidateRequest,
     sendPresence: (presence) => send({ type: 'presence.changed', presence }),
     setSelectedChannelId,
+    setChannelGroups,
+    setDraft,
+    setEditingId,
+    setEditDraft,
+    setSearchOpen,
     setSearchQuery,
+    setWorkspaceOverlay,
     setChannelEditOpen,
+    setChannelCreateGroup,
+    setAvailableMembers,
+    setAvailableMembersLoaded,
     setChannels,
     setMessages,
-    setAuthUser,
+    setAuthUser: setAuthUserWithRef,
     setAuthState,
     setBackendState,
     setMyPresence,
+    setTypingUsers,
+    setThreadDraft,
     setThreadRoot,
     setThreadReplies,
     setActionError,
   })
   const { selectChannel, changePresence, updateProfile, logout } = workspaceActions
+  const selectChannelAndResetJump = useCallback((channel: Channel) => {
+    setPendingSavedJump(null)
+    selectChannel(channel)
+  }, [selectChannel])
   const { openChannelCreate, createChannel, updateChannel } = useChannelManagement({
     backendReady,
     backendUnavailableMessage,
     selectedChannelId,
+    sessionVersion: sessionVersionRef.current,
+    isSessionVersionActive,
+    selectChannel,
     setChannels,
     setMessages,
-    setSelectedChannelId,
     refreshSelectedChannelMembers,
     setChannelCreateGroup,
     setChannelEditOpen,
@@ -199,14 +238,26 @@ function App() {
   })
 
   useEffect(() => {
-    chatApi.me().then((user) => { setAuthUser(user); setAuthState('authenticated') }).catch((error) => {
+    chatApi.me().then((user) => { setAuthUserWithRef(user); setAuthState('authenticated') }).catch((error) => {
       setAuthState(error instanceof ChatApiError && error.status === 401 ? 'anonymous' : 'unavailable')
     })
-  }, [])
+  }, [setAuthUserWithRef])
 
   useEffect(() => { selectedChannelRef.current = selectedChannelId }, [selectedChannelId])
   useEffect(() => { threadRootRef.current = threadRoot }, [threadRoot, threadRootRef])
   useEffect(() => { setHighlightedMessageId(null) }, [selectedChannelId])
+
+  useEffect(() => {
+    if (!pendingSavedJump || pendingSavedJump.channelId !== selectedChannelId) return
+    const element = messageElementsRef.current[pendingSavedJump.messageId]
+    if (!element) return
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedMessageId(pendingSavedJump.messageId)
+      window.setTimeout(() => setHighlightedMessageId((current) => current === pendingSavedJump.messageId ? null : current), 1800)
+      setPendingSavedJump((current) => current?.messageId === pendingSavedJump.messageId ? null : current)
+    })
+  }, [messageElementsRef, messages, pendingSavedJump, selectedChannelId])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -226,30 +277,53 @@ function App() {
     setActionError(null)
     let disposed = false
     let loaded = false
+    let requestInProgress = false
+    let retryTimer: number | undefined
+    const scheduleRetry = () => {
+      if (disposed || loaded || retryTimer !== undefined) return
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined
+        void loadChannels()
+      }, 1500)
+    }
     const loadChannels = async () => {
-      if (disposed || loaded) return
+      if (disposed || loaded || requestInProgress) return
+      requestInProgress = true
       try {
+        const expectedRefreshSequence = channelRefreshSequenceRef.current + 1
         await refreshChannels(true)
         if (disposed) return
+        if (expectedRefreshSequence !== channelRefreshSequenceRef.current) {
+          scheduleRetry()
+          return
+        }
         setAvailableMembers([])
         setAvailableMembersLoaded(false)
         setBackendState('ready')
         loaded = true
+        const membersRequestSequence = channelRefreshSequenceRef.current
         void chatApi.listUsers().then((memberResponse) => {
-          if (!disposed) {
+          if (!disposed && membersRequestSequence === channelRefreshSequenceRef.current) {
             setAvailableMembers(memberResponse.users)
             setAvailableMembersLoaded(true)
           }
         }).catch(() => {
-          if (!disposed) setAvailableMembersLoaded(true)
+          if (!disposed && membersRequestSequence === channelRefreshSequenceRef.current) setAvailableMembersLoaded(true)
         })
       } catch {
-        if (!disposed) setBackendState('unavailable')
+        if (!disposed) {
+          setBackendState('unavailable')
+          scheduleRetry()
+        }
+      } finally {
+        requestInProgress = false
       }
     }
     void loadChannels()
-    const retryTimer = window.setInterval(() => { void loadChannels() }, 1500)
-    return () => { disposed = true; window.clearInterval(retryTimer) }
+    return () => {
+      disposed = true
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer)
+    }
   }, [authState])
 
   useEffect(() => {
@@ -264,7 +338,7 @@ function App() {
   useEffect(() => {
     const list = messageListRef.current
     if (list && !searchQuery) list.scrollTop = list.scrollHeight
-    // Channel changes control the initial scroll position; search changes do not.
+    // チャンネル変更では初期スクロール位置を制御しますが、検索変更では制御しません。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChannelId])
 
@@ -302,13 +376,18 @@ function App() {
       setActionError(backendUnavailableMessage)
       return
     }
+    const requestChannelId = selectedChannelId
+    const requestRootId = threadRoot.id
     setThreadDraft('')
     try {
-      const reply = fromApiMessage(await chatApi.createMessage(selectedChannelId, { body, parent_message_id: threadRoot.id }))
-      await enqueueRealtimeTask(realtimeQueueRef, () => addThreadReply(reply, selectedChannelId, true))
+      const reply = fromApiMessage(await chatApi.createMessage(requestChannelId, { body, parent_message_id: requestRootId }))
+      if (selectedChannelRef.current !== requestChannelId || threadRootRef.current?.id !== requestRootId) return
+      await enqueueRealtimeTask(realtimeQueueRef, () => addThreadReply(reply, requestChannelId, true))
     } catch {
-      setThreadDraft(body)
-      setActionError(t('errors.replySend'))
+      if (selectedChannelRef.current === requestChannelId && threadRootRef.current?.id === requestRootId) {
+        setThreadDraft((current) => current.length === 0 ? body : current)
+        setActionError(t('errors.replySend'))
+      }
     }
   }
 
@@ -320,22 +399,39 @@ function App() {
     })
   }
 
-  const onThreadKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendThreadReply() } }
+  const onThreadKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return; if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendThreadReply() } }
   const typingLabel = Object.values(typingUsers[selectedChannelId] ?? {}).join('、')
   const openThreadFromOverlay = (channel: Channel, message: Message) => {
-    selectChannel(channel)
+    selectChannelAndResetJump(channel)
     void openThread(message)
   }
 
-  if (authState !== 'authenticated' || !authUser) return <AuthScreen initialError={authState === 'unavailable' ? t('errors.apiUnavailable') : undefined} onAuthenticated={(user) => { setAuthUser(user); setAuthState('authenticated') }} />
+  const openSavedMessage = async (channel: Channel, messageId: string) => {
+    setWorkspaceOverlay(null)
+    setActionError(null)
+    try {
+      const loaded = (messages[channel.id] ?? []).some((message) => message.id === messageId)
+        || await loadMessageUntil(channel.id, messageId)
+      if (!loaded) {
+        setActionError(t('errors.savedMessageMissing'))
+        return
+      }
+      selectChannelAndResetJump(channel)
+      setPendingSavedJump({ channelId: channel.id, messageId })
+    } catch {
+      setActionError(t('errors.savedMessageMissing'))
+    }
+  }
+
+  if (authState !== 'authenticated' || !authUser) return <AuthScreen initialError={authState === 'unavailable' ? t('errors.apiUnavailable') : undefined} onAuthenticated={(user) => { setAuthUserWithRef(user); setAuthState('authenticated') }} />
 
   return (
     <div className={`app-shell ${showDetails ? 'app-shell-with-details' : ''}`}>
-      <WorkspaceSidebar channels={channels} selectedChannelId={selectedChannelId} currentUser={currentUser} myPresence={myPresence} channelGroups={channelGroups} onSelectChannel={selectChannel} onAddChannel={openChannelCreate} onChangePresence={changePresence} onUpdateProfile={updateProfile} onLogout={() => void logout()} unreadCount={unreadCount} savedCount={savedMessages.length} threadCount={threadCount} onOpenSearch={() => setWorkspaceOverlay('search')} onOpenQuickLink={setWorkspaceOverlay} onOpenWorkspace={() => setWorkspaceOverlay('workspace')} onOpenHelp={() => setWorkspaceOverlay('help')} />
+      <WorkspaceSidebar channels={channels} selectedChannelId={selectedChannelId} currentUser={currentUser} myPresence={myPresence} channelGroups={channelGroups} onSelectChannel={selectChannelAndResetJump} onAddChannel={openChannelCreate} onChangePresence={changePresence} onUpdateProfile={updateProfile} onLogout={() => void logout()} unreadCount={unreadCount} savedCount={savedMessages.length} threadCount={threadCount} onOpenSearch={() => setWorkspaceOverlay('search')} onOpenQuickLink={setWorkspaceOverlay} onOpenWorkspace={() => setWorkspaceOverlay('workspace')} onOpenHelp={() => setWorkspaceOverlay('help')} />
       {channelCreateGroup && <ChannelCreateDialog initialGroup={channelCreateGroup} groups={channelGroups} members={availableMembers} currentUserId={currentUser.id} onCreate={createChannel} onClose={() => setChannelCreateGroup(null)} />}
       {channelEditOpen && <ChannelEditDialog channel={selectedChannel} members={availableMembers} channelMembers={selectedChannelMembers} currentUserId={currentUser.id} currentUserRole={currentChannelRole} onSave={updateChannel} onClose={() => setChannelEditOpen(false)} />}
-      <ChatPanel selectedChannel={selectedChannel} visibleMessages={visibleMessages} currentUser={currentUser} backendAvailable={backendReady} errorMessage={actionError ?? (backendUnavailable ? backendUnavailableMessage : undefined)} searchOpen={searchOpen} searchQuery={searchQuery} editingId={editingId} draft={draft} editDraft={editDraft} messageListRef={messageListRef} messageElementsRef={messageElementsRef} highlightedMessageId={highlightedMessageId} hasMore={messagePagination[selectedChannelId]?.hasMore ?? false} loadingOlder={messagePagination[selectedChannelId]?.loading ?? false} onLoadOlder={loadOlderMessages} onSearchOpenChange={setSearchOpen} onSearchQueryChange={setSearchQuery} onToggleDetails={() => setShowDetails((open) => !open)} canEditChannel={canEditSelectedChannel} onOpenChannelEdit={() => setChannelEditOpen(true)} onToggleReaction={toggleReaction} savedMessageIds={savedMessageIds} onToggleSaved={toggleSaved} onOpenThread={(message) => void openThread(message)} typingLabel={typingLabel} onStartEditing={startEditing} onDeleteMessage={(messageId) => void deleteMessage(messageId)} onDraftChange={onDraftChange} onEditDraftChange={setEditDraft} onComposerKeyDown={onComposerKeyDown} onSubmit={() => { if (editingId) void updateMessage(); else void sendMessage() }} onCancelEditing={() => { setEditingId(null); setEditDraft('') }} />
-      {workspaceOverlay && <WorkspaceOverlay kind={workspaceOverlay} channels={channels} messages={messages} savedMessages={savedMessages} threadItems={workspaceThreadsLoaded ? workspaceThreadItems : undefined} memberCount={availableMembersLoaded ? availableMembers.length : undefined} connection={connection} onSelectChannel={selectChannel} onOpenThread={openThreadFromOverlay} onClose={() => setWorkspaceOverlay(null)} />}
+      <ChatPanel selectedChannel={selectedChannel} visibleMessages={visibleMessages} currentUser={currentUser} backendAvailable={backendReady} errorMessage={actionError ?? (backendUnavailable ? backendUnavailableMessage : undefined)} searchOpen={searchOpen} searchQuery={searchQuery} editingId={editingId} draft={draft} outgoingMessages={outgoingMessages} onRetryOutgoingMessage={(id) => void retryOutgoingMessage(id)} editDraft={editDraft} messageListRef={messageListRef} messageElementsRef={messageElementsRef} highlightedMessageId={highlightedMessageId} hasMore={messagePagination[selectedChannelId]?.hasMore ?? false} loadingOlder={messagePagination[selectedChannelId]?.loading ?? false} onLoadOlder={loadOlderMessages} onSearchOpenChange={setSearchOpen} onSearchQueryChange={setSearchQuery} onToggleDetails={() => setShowDetails((open) => !open)} canEditChannel={canEditSelectedChannel} onOpenChannelEdit={() => setChannelEditOpen(true)} onToggleReaction={toggleReaction} savedMessageIds={savedMessageIds} onToggleSaved={toggleSaved} onOpenThread={(message) => void openThread(message)} typingLabel={typingLabel} onStartEditing={startEditing} onDeleteMessage={(messageId) => void deleteMessage(messageId)} onDraftChange={onDraftChange} onEditDraftChange={setEditDraft} onComposerKeyDown={onComposerKeyDown} onSubmit={() => { if (editingId) void updateMessage(); else void sendMessage() }} onCancelEditing={() => { setEditingId(null); setEditDraft('') }} />
+      {workspaceOverlay && <WorkspaceOverlay kind={workspaceOverlay} channels={channels} messages={messages} savedMessages={savedMessages} threadItems={workspaceThreadsLoaded ? workspaceThreadItems : undefined} memberCount={availableMembersLoaded ? availableMembers.length : undefined} connection={connection} onSelectChannel={selectChannelAndResetJump} onOpenSavedMessage={(channel, messageId) => void openSavedMessage(channel, messageId)} onOpenThread={openThreadFromOverlay} onClose={() => setWorkspaceOverlay(null)} />}
       {showDetails && <DetailsPanel selectedChannel={selectedChannel} members={detailMembers} summary={workSummary} summaryLoading={summaryLoading} summaryError={summaryError ?? undefined} connection={connection} onGenerateSummary={() => void generateSummary()} onJumpToMessage={jumpToMessage} onClose={() => setShowDetails(false)} />}
       {threadRoot && <ThreadPanel root={threadRoot} replies={threadReplies} draft={threadDraft} loading={threadLoading} hasMore={threadPagination.hasMore} loadingOlder={threadPagination.loading} showDetails={showDetails} onDraftChange={setThreadDraft} onKeyDown={onThreadKeyDown} onSubmit={() => void sendThreadReply()} onLoadOlder={loadOlderThreadReplies} onClose={closeThread} replyElementsRef={threadReplyElementsRef} />}
     </div>

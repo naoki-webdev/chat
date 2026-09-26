@@ -86,6 +86,9 @@ export function useThread({ backendReady, selectedChannelRef, messages, setActio
     abortControllerRef.current = controller
     threadRootRef.current = message
     setThreadRoot(message)
+    setThreadReplies([])
+    threadReplyIDsRef.current.clear()
+    threadReplyElementsRef.current = {}
     setThreadDraft('')
     threadPaginationRef.current = { hasMore: false, loading: false }
     setThreadPagination({ hasMore: false, loading: false })

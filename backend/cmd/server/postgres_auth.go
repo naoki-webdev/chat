@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -160,8 +161,16 @@ func (r *postgresRepository) CreateSession(ctx context.Context, userID string) (
 }
 
 func (r *postgresRepository) DeleteSession(ctx context.Context, token string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(token))
-	return err
+	result, err := r.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(token))
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() > 0 {
+		if err := r.publishSessionRevocation(token); err != nil {
+			log.Printf("could not publish session revocation: %v", err)
+		}
+	}
+	return nil
 }
 
 func isUniqueViolation(err error) bool {

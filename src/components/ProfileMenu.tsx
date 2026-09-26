@@ -34,7 +34,7 @@ export function ProfileMenu({ user, presence, onChangePresence, onUpdateProfile,
       await onUpdateProfile(nextName)
       onClose()
     } catch {
-      // The parent displays the API error and keeps the menu open for another attempt.
+      // APIエラーは親コンポーネントで表示し、再試行できるようメニューは開いたままにします。
     } finally {
       setSaving(false)
     }

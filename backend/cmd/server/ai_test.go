@@ -8,7 +8,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"realtime-chat/backend/internal/ai"
 )
+
+type immediateAIService struct{}
+
+func (immediateAIService) Stream(_ context.Context, _ []ai.Message, _ string, onDelta func(string) error) (string, error) {
+	response := "AI thread response"
+	if err := onDelta(response); err != nil {
+		return "", err
+	}
+	return response, nil
+}
 
 func TestAIRequestDailyLimit(t *testing.T) {
 	server := newServer()
@@ -58,4 +70,32 @@ func TestOrbitAIStreamsAndPersistsResponse(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("Orbit AI response was not persisted")
+}
+
+func TestOrbitAIReplyKeepsTheOriginalThread(t *testing.T) {
+	server := newServer()
+	server.aiService = immediateAIService{}
+	ctx := context.Background()
+	root, _, err := server.repository.CreateMessage(ctx, "general", "u-ken", messageRequest{Body: "thread root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt, _, err := server.repository.CreateMessage(ctx, "general", "u-naoki", messageRequest{Body: "ask AI", ParentMessageID: root.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server.startAIReply("request", "general", "u-naoki", prompt)
+
+	thread, err := server.repository.ListThreadPage(ctx, root.ID, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(thread.Messages) != 2 {
+		t.Fatalf("thread messages = %d, want 2", len(thread.Messages))
+	}
+	answer := thread.Messages[1]
+	if answer.AuthorID != orbitAIUserID || answer.ParentMessageID != root.ID || answer.Body != "AI thread response" {
+		t.Fatalf("unexpected AI thread message: %+v", answer)
+	}
 }

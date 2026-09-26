@@ -27,6 +27,10 @@ type UseChatRealtimeOptions = {
   setThreadReplies: Dispatch<SetStateAction<Message[]>>
 }
 
+export function clearScheduledReadTimers(timers: Record<string, number>, clearTimer: (timer: number) => void) {
+  Object.values(timers).forEach((timer) => clearTimer(timer))
+}
+
 export function shouldApplyLiveRealtimeEvent(event: RealtimeEvent, currentCursor: number) {
   const cursor = event.event_id ?? event.sequence
   return cursor <= 0 || cursor > currentCursor || event.type === 'message.ai_completed'
@@ -57,6 +61,23 @@ export function useChatRealtime({
   const refreshChannelsWithRetryRef = useRef<() => Promise<void>>(async () => undefined)
   const readTimersRef = useRef<Record<string, number>>({})
   const lastReconnectRequestRef = useRef(0)
+  const sessionGenerationRef = useRef(0)
+  const sessionKeyRef = useRef<string | null>(null)
+  const sessionKey = enabled ? currentUser.id : null
+  if (sessionKeyRef.current !== sessionKey) {
+    sessionKeyRef.current = sessionKey
+    sessionGenerationRef.current += 1
+  }
+  const sessionGeneration = sessionGenerationRef.current
+  const isSessionActive = useCallback(
+    () => enabled && sessionGeneration === sessionGenerationRef.current,
+    [enabled, sessionGeneration],
+  )
+
+  const clearScheduledChannelReads = useCallback(() => {
+    clearScheduledReadTimers(readTimersRef.current, (timer) => window.clearTimeout(timer))
+    readTimersRef.current = {}
+  }, [])
 
   const advanceEventCursor = useCallback((cursor: number) => {
     if (cursor > eventCursorRef.current) eventCursorRef.current = cursor
@@ -95,9 +116,12 @@ export function useChatRealtime({
     if (previousTimer !== undefined) window.clearTimeout(previousTimer)
     readTimersRef.current[channelId] = window.setTimeout(() => {
       delete readTimersRef.current[channelId]
-      void chatApi.markChannelRead(channelId).catch(onReadStateError)
+      if (!isSessionActive()) return
+      void chatApi.markChannelRead(channelId).catch(() => {
+        if (isSessionActive()) onReadStateError()
+      })
     }, 350)
-  }, [onReadStateError])
+  }, [isSessionActive, onReadStateError])
   const scheduleSelectedChannelReadRef = useRef(scheduleSelectedChannelRead)
   scheduleSelectedChannelReadRef.current = scheduleSelectedChannelRead
 
@@ -121,6 +145,7 @@ export function useChatRealtime({
 
   const applyRealtimeEvent = useMemo(() => createRealtimeEventHandler({
       currentUserID: currentUser.id,
+      isSessionActive,
       setAuthUser,
       eventCursorRef,
       selectedChannelRef,
@@ -136,18 +161,20 @@ export function useChatRealtime({
       setThreadReplies,
       advanceEventCursor,
       addThreadReply,
-    }), [addThreadReply, advanceEventCursor, currentUser.id, refreshChannelsWithRetryRef, refreshSelectedChannelMembersRef, setAuthUser, setChannels, setMessages, setMyPresence, setThreadReplies, setThreadRoot, setTypingUsers, threadRootRef, selectedChannelRef])
+    }), [addThreadReply, advanceEventCursor, currentUser.id, isSessionActive, refreshChannelsWithRetryRef, refreshSelectedChannelMembersRef, setAuthUser, setChannels, setMessages, setMyPresence, setThreadReplies, setThreadRoot, setTypingUsers, threadRootRef, selectedChannelRef])
 
   const enqueueRealtimeEvent = useCallback((event: RealtimeEvent) => {
     void enqueueRealtimeTask(realtimeQueueRef, async () => {
+      if (!isSessionActive()) return
       if (!shouldApplyLiveRealtimeEvent(event, eventCursorRef.current)) return
-      // sequence is shared by every channel. Events from channels the user
-      // cannot access therefore create expected gaps in the visible stream.
-      // Catch-up is handled on reconnect; a live gap must not trigger a
-      // redundant sync request.
+      // シーケンスはすべてのチャンネルで共有されます。そのため、ユーザーがアクセスできない
+      // チャンネルのイベントによって、表示中のストリームに想定内の欠番が生じます。
+      // 欠番の補完は再接続時に行うため、リアルタイム中の欠番で重複した同期要求を発生させません。
       await applyRealtimeEvent(event)
-    }).catch(() => requestReconnect())
-	}, [applyRealtimeEvent, realtimeQueueRef, requestReconnect])
+    }).catch(() => {
+      if (isSessionActive()) requestReconnect()
+    })
+  }, [applyRealtimeEvent, isSessionActive, realtimeQueueRef, requestReconnect])
 
   const { enqueueEventSync } = useRealtimeSync({
     realtimeQueueRef,
@@ -160,6 +187,7 @@ export function useChatRealtime({
     onEvent: applyRealtimeEvent,
     onCursor: advanceEventCursor,
     requestReconnect,
+    isSessionActive,
   })
 
   const onTransportStatus = useCallback((status: RealtimeConnection) => {
@@ -169,10 +197,7 @@ export function useChatRealtime({
   const transport = useRealtimeTransport({ enabled, onStatus: onTransportStatus, onEvent: enqueueRealtimeEvent })
   transportRef.current = transport
 
-  useEffect(() => () => {
-    Object.values(readTimersRef.current).forEach((timer) => window.clearTimeout(timer))
-    readTimersRef.current = {}
-  }, [])
+  useEffect(() => clearScheduledChannelReads, [clearScheduledChannelReads])
 
-  return { connection, send: transport.send, addThreadReply, advanceEventCursor }
+  return { connection, send: transport.send, addThreadReply, advanceEventCursor, clearScheduledChannelReads }
 }

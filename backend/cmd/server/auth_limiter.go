@@ -121,9 +121,8 @@ func requestClientIP(request *http.Request) string {
 	if trustProxyHeaders() {
 		if config, configErr := proxyHeaderConfigFromEnv(); configErr == nil && remoteIP != nil && isTrustedProxy(remoteIP, config.trustedNetworks) {
 			if forwarded, valid := parseForwardedIPs(request.Header.Get("X-Forwarded-For")); valid && len(forwarded) >= config.trustedHops {
-				// X-Forwarded-For is ordered from the original client to the
-				// nearest proxy. Select from the right so client-supplied values
-				// cannot replace the address added by the trusted proxy.
+				// X-Forwarded-Forは元のクライアントから直近のプロキシの順に並びます。
+				// 信頼するプロキシが追加したアドレスをクライアント側の値で置き換えられないよう、右側から選択します。
 				return forwarded[len(forwarded)-config.trustedHops].String()
 			}
 			if realIP := net.ParseIP(strings.TrimSpace(request.Header.Get("X-Real-IP"))); realIP != nil && strings.TrimSpace(request.Header.Get("X-Forwarded-For")) == "" {

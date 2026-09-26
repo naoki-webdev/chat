@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { RealtimeEvent } from '../services/chatApi'
-import { shouldApplyLiveRealtimeEvent } from './useChatRealtime'
+import { clearScheduledReadTimers, shouldApplyLiveRealtimeEvent } from './useChatRealtime'
 
 function event(sequence: number): RealtimeEvent {
   return { type: 'message.created', channel_id: 'visible-channel', sequence, event_id: sequence }
@@ -21,5 +21,17 @@ describe('shouldApplyLiveRealtimeEvent', () => {
 
   it('accepts a delayed AI completion after a newer persisted event', () => {
     expect(shouldApplyLiveRealtimeEvent({ ...event(3), type: 'message.ai_completed' }, 4)).toBe(true)
+  })
+})
+
+describe('clearScheduledReadTimers', () => {
+  it('clears every pending channel read timer', () => {
+    const clearTimer = vi.fn()
+
+    clearScheduledReadTimers({ general: 11, frontend: 12 }, clearTimer)
+
+    expect(clearTimer).toHaveBeenCalledWith(11)
+    expect(clearTimer).toHaveBeenCalledWith(12)
+    expect(clearTimer).toHaveBeenCalledTimes(2)
   })
 })

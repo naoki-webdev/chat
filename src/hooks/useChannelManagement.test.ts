@@ -19,9 +19,9 @@ describe('useChannelManagement', () => {
     function Harness() {
       actions = useChannelManagement({
         backendReady: true, backendUnavailableMessage: '', selectedChannelId: '',
+        sessionVersion: 1, isSessionVersionActive: () => true, selectChannel: select,
         setChannels: (update) => { channels = typeof update === 'function' ? update(channels) : update },
         setMessages: (update) => { messages = typeof update === 'function' ? update(messages) : update },
-        setSelectedChannelId: select,
         refreshSelectedChannelMembers: async () => {},
         setChannelCreateGroup: vi.fn(), setChannelEditOpen: vi.fn(), setActionError: vi.fn(),
       })
@@ -40,6 +40,36 @@ describe('useChannelManagement', () => {
     expect(channels).toHaveLength(1)
     expect(channels[0].unread).toBe(refreshed ? 1 : 0)
     expect(messages.new).toEqual(refreshed ? [liveMessage] : [])
-    expect(select).toHaveBeenCalledWith('new')
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ id: 'new' }))
+  })
+
+  it('ignores a channel creation response after the authenticated session changes', async () => {
+    const channel: ApiChannel = { id: 'new', name: 'New', group: 'Team', kind: 'channel', unread: 0 }
+    let resolveCreate!: (channel: ApiChannel) => void
+    vi.spyOn(chatApi, 'createChannel').mockReturnValue(new Promise((resolve) => { resolveCreate = resolve }))
+    const setChannels = vi.fn()
+    const setMessages = vi.fn()
+    const selectChannel = vi.fn()
+    let activeVersion = 1
+    let actions!: ReturnType<typeof useChannelManagement>
+    function Harness() {
+      actions = useChannelManagement({
+        backendReady: true, backendUnavailableMessage: '', selectedChannelId: '', sessionVersion: 1,
+        isSessionVersionActive: (version) => version === activeVersion,
+        selectChannel,
+        setChannels, setMessages, refreshSelectedChannelMembers: async () => {},
+        setChannelCreateGroup: vi.fn(), setChannelEditOpen: vi.fn(), setActionError: vi.fn(),
+      })
+      return null
+    }
+    renderToString(createElement(Harness))
+    const pending = actions.createChannel({ name: 'New', group: 'Team', description: '', memberIds: [] })
+    activeVersion = 2
+    resolveCreate(channel)
+    await pending
+
+    expect(setChannels).not.toHaveBeenCalled()
+    expect(setMessages).not.toHaveBeenCalled()
+    expect(selectChannel).not.toHaveBeenCalled()
   })
 })

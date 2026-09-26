@@ -14,6 +14,7 @@ type UseRealtimeSyncOptions = {
   onEvent: (event: RealtimeEvent) => void | Promise<void>
   onCursor: (cursor: number) => void
   requestReconnect: () => void
+  isSessionActive?: () => boolean
 }
 
 export function useRealtimeSync({
@@ -27,19 +28,38 @@ export function useRealtimeSync({
   onEvent,
   onCursor,
   requestReconnect,
+  isSessionActive,
 }: UseRealtimeSyncOptions) {
+  const sessionIsActive = useCallback(() => isSessionActive?.() ?? true, [isSessionActive])
+
   const syncEvents = useCallback(async (after: number) => {
-    return syncRealtimeEvents(after, listEvents, onEvent, onCursor)
-  }, [listEvents, onCursor, onEvent])
+    return syncRealtimeEvents(
+      after,
+      listEvents,
+      (event) => {
+        if (!sessionIsActive()) return
+        return onEvent(event)
+      },
+      (cursor) => {
+        if (sessionIsActive()) onCursor(cursor)
+      },
+    )
+  }, [listEvents, onCursor, onEvent, sessionIsActive])
 
   const enqueueEventSync = useCallback(() => {
     void enqueueRealtimeTask(realtimeQueueRef, async () => {
+      if (!sessionIsActive()) return
       if (!await syncEvents(eventCursorRef.current)) throw new Error('realtime event sync did not converge')
+      if (!sessionIsActive()) return
       await refreshChannelsWithRetryRef.current()
+      if (!sessionIsActive()) return
       await refreshSelectedChannelMembersRef.current()
+      if (!sessionIsActive()) return
       await loadMessagesDirectRef.current(selectedChannelRef.current)
-    }).catch(() => requestReconnect())
-  }, [eventCursorRef, loadMessagesDirectRef, realtimeQueueRef, refreshChannelsWithRetryRef, refreshSelectedChannelMembersRef, requestReconnect, selectedChannelRef, syncEvents])
+    }).catch(() => {
+      if (sessionIsActive()) requestReconnect()
+    })
+  }, [eventCursorRef, loadMessagesDirectRef, realtimeQueueRef, refreshChannelsWithRetryRef, refreshSelectedChannelMembersRef, requestReconnect, selectedChannelRef, sessionIsActive, syncEvents])
 
   return { enqueueEventSync }
 }

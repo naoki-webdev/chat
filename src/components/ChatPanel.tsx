@@ -3,6 +3,7 @@ import type { ApiUser } from '../services/chatApi'
 import type { Channel, Message } from '../types/chat'
 import { Icon, Avatar } from './ChatIcons'
 import { t } from '../i18n'
+import type { OutgoingMessage } from '../hooks/useChatMessages'
 
 type Props = {
   selectedChannel: Channel
@@ -14,6 +15,8 @@ type Props = {
   searchQuery: string
   editingId: string | null
   draft: string
+  outgoingMessages: OutgoingMessage[]
+  onRetryOutgoingMessage: (id: number) => void
   editDraft: string
   messageListRef: MutableRefObject<HTMLDivElement | null>
   messageElementsRef: MutableRefObject<Record<string, HTMLElement | null>>
@@ -40,7 +43,7 @@ type Props = {
   onCancelEditing: () => void
 }
 
-export function ChatPanel({ selectedChannel, visibleMessages, currentUser, backendAvailable, errorMessage, searchOpen, searchQuery, editingId, draft, editDraft, messageListRef, messageElementsRef, highlightedMessageId, hasMore, loadingOlder, onLoadOlder, onSearchOpenChange, onSearchQueryChange, onToggleDetails, canEditChannel, onOpenChannelEdit, onToggleReaction, savedMessageIds, onToggleSaved, onOpenThread, typingLabel, onStartEditing, onDeleteMessage, onDraftChange, onEditDraftChange, onComposerKeyDown, onSubmit, onCancelEditing }: Props) {
+export function ChatPanel({ selectedChannel, visibleMessages, currentUser, backendAvailable, errorMessage, searchOpen, searchQuery, editingId, draft, outgoingMessages, onRetryOutgoingMessage, editDraft, messageListRef, messageElementsRef, highlightedMessageId, hasMore, loadingOlder, onLoadOlder, onSearchOpenChange, onSearchQueryChange, onToggleDetails, canEditChannel, onOpenChannelEdit, onToggleReaction, savedMessageIds, onToggleSaved, onOpenThread, typingLabel, onStartEditing, onDeleteMessage, onDraftChange, onEditDraftChange, onComposerKeyDown, onSubmit, onCancelEditing }: Props) {
   return <main className="chat-panel">
     <header className="chat-header">
       <div className="channel-title"><span className="channel-title-icon">{selectedChannel.kind === 'channel' ? '#' : '@'}</span><div><h2>{selectedChannel.name}</h2><p>{selectedChannel.description ?? t('chat.directMessageFallback')}</p></div></div>
@@ -76,6 +79,10 @@ export function ChatPanel({ selectedChannel, visibleMessages, currentUser, backe
     </div>
     <div className="composer-wrap">
       {errorMessage && <div className="composer-error" role="alert">{errorMessage}</div>}
+      {outgoingMessages.filter((message) => message.channelId === selectedChannel.id).map((message) => <div className="composer-error" role={message.status === 'failed' ? 'alert' : 'status'} key={message.id}>
+        <span>{message.status === 'failed' ? t('errors.messageSend') : t('chat.messageSending')}</span>
+        {message.status === 'failed' && <button type="button" onClick={() => onRetryOutgoingMessage(message.id)}>{t('chat.retryMessage')}</button>}
+      </div>)}
       {editingId && <div className="editing-bar"><Icon name="edit" size={14} /><span>{t('chat.editing')}</span><button onClick={onCancelEditing}>{t('chat.cancel')}</button></div>}
       <div className={`composer ${editingId ? 'composer-editing' : ''}`}><textarea disabled={!backendAvailable} value={editingId ? editDraft : draft} onChange={(event) => editingId ? onEditDraftChange(event.target.value) : onDraftChange(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={t('chat.sendPlaceholder', { prefix: selectedChannel.kind === 'channel' ? '#' : '@', name: selectedChannel.name })} rows={1} /><div className="composer-tools composer-tools-right"><button disabled={!backendAvailable || !(editingId ? editDraft : draft).trim()} className={`send-button ${(editingId ? editDraft : draft).trim() ? 'send-button-active' : ''}`} onClick={onSubmit} aria-label={editingId ? t('chat.saveEdit') : t('chat.send')}>{editingId ? <Icon name="check" size={18} /> : <Icon name="send" size={18} />}</button></div></div>
     </div>

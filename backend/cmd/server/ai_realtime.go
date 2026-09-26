@@ -143,7 +143,7 @@ func (s *server) startAIReply(requestID, channelID, userID string, userMessage M
 			if body == "" {
 				break
 			}
-			history = append(history, ai.Message{Author: message.Author, Body: body})
+			history = append(history, ai.Message{Author: message.Author, Body: body, IsAssistant: message.AuthorID == orbitAIUserID})
 			contextCharacters += len([]rune(body))
 			if contextCharacters >= maxAIContextCharacters {
 				break
@@ -189,15 +189,15 @@ func (s *server) startAIReply(requestID, channelID, userID string, userMessage M
 		return
 	}
 
-	finalMessage, record, err := s.repository.CreateMessage(ctx, channelID, orbitAIUserID, messageRequest{Body: finalBody})
+	finalMessage, record, err := s.repository.CreateMessage(ctx, channelID, orbitAIUserID, messageRequest{Body: finalBody, ParentMessageID: userMessage.ParentMessageID})
 	if err != nil {
 		log.Printf("could not persist Orbit AI message: %v", err)
 		s.broadcast(realtimeEvent{Type: "message.ai_failed", ChannelID: channelID, MessageID: temporaryID, Error: "Orbit AIの回答を保存できませんでした。"})
 		return
 	}
 	s.broadcast(record.Event)
-	// The final message is persisted as a normal message.created event, so a
-	// reconnect can recover it. Live clients receive the richer completed event
-	// and replace the temporary streaming message in place.
+	// 最終メッセージは通常のmessage.createdイベントとして永続化するため、
+	// 再接続時にも復元できます。接続中のクライアントには、より詳細な完了イベントを送り、
+	// 一時的なストリーミングメッセージをその場で置き換えます。
 	s.broadcast(realtimeEvent{Type: "message.ai_completed", ChannelID: channelID, EventID: record.Sequence, Sequence: record.Sequence, MessageID: temporaryID, Message: pointerToMessage(finalMessage)})
 }

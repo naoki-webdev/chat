@@ -10,8 +10,8 @@ import (
 
 const aiRequestLease = 90 * time.Second
 
-// acquireAIRequest is an atomic lease shared by every application instance
-// using the same PostgreSQL database.
+// acquireAIRequestは、同じPostgreSQLデータベースを使うすべてのアプリケーションインスタンスで
+// 共有するアトミックなリースです。
 func (r *postgresRepository) acquireAIRequest(ctx context.Context, key string, now time.Time, minInterval time.Duration) (bool, error) {
 	var acquired bool
 	err := r.pool.QueryRow(ctx, `

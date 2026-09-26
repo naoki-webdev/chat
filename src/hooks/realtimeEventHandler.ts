@@ -8,6 +8,7 @@ export type TypingUsers = Record<string, Record<string, string>>
 
 export type RealtimeEventHandlerOptions = {
   currentUserID: string
+  isSessionActive?: () => boolean
   setAuthUser: Dispatch<SetStateAction<ApiUser | null>>
   eventCursorRef: MutableRefObject<number>
   selectedChannelRef: MutableRefObject<string>
@@ -28,6 +29,7 @@ export type RealtimeEventHandlerOptions = {
 export function createRealtimeEventHandler(options: RealtimeEventHandlerOptions) {
   const {
     currentUserID,
+    isSessionActive,
     setAuthUser,
     eventCursorRef,
     selectedChannelRef,
@@ -46,13 +48,13 @@ export function createRealtimeEventHandler(options: RealtimeEventHandlerOptions)
   } = options
 
   return async (event: RealtimeEvent) => {
+    if (isSessionActive && !isSessionActive()) return
     const cursor = event.event_id ?? event.sequence
-    // PostgreSQL emits message.created and message.ai_completed with the
-    // same persisted sequence. The completion replaces the temporary
-    // streaming message and must survive the cursor de-duplication.
+    // PostgreSQLはmessage.createdとmessage.ai_completedを同じ永続化シーケンスで送信します。
+    // 完了イベントは一時的なストリーミングメッセージを置き換えるため、カーソルの重複排除後も残す必要があります。
     if (cursor > 0 && cursor < eventCursorRef.current && event.type === 'message.ai_completed') {
-      // A later event may have edited or deleted the final message. Only
-      // retire the placeholder; never replay the older persisted content.
+      // 後続イベントで最終メッセージが編集または削除されている場合があります。
+      // プレースホルダーだけを終了させ、古い永続化内容を再表示してはいけません。
       if (event.message_id) setMessages((current) => ({
         ...current,
         [event.channel_id]: (current[event.channel_id] ?? []).filter((message) => message.id !== event.message_id),
@@ -106,7 +108,7 @@ export function createRealtimeEventHandler(options: RealtimeEventHandlerOptions)
       setThreadReplies((current) => current.map((message) => message.authorID === actorID
         ? { ...message, author: event.actor_name!, initials: event.actor_initials!, color: event.actor_color! }
         : message))
-      // DM channel IDs remain stable; only the display data follows a rename.
+      // DMのチャンネルIDは変わらず、表示用データだけが名前変更に追随します。
       setChannels((current) => setChannelsForUpdatedUser(current, event))
       return
     }

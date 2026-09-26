@@ -18,8 +18,8 @@ export default defineConfig(
     },
     rules: {
       ...reactHooks.configs.flat.recommended.rules,
-      // Refs are deliberately used as imperative bridges between hooks and
-      // the WebSocket/event queue in this application.
+      // Refはフックと、このアプリケーションのWebSocket／イベントキューをつなぐ
+      // 命令的な橋渡しとして意図的に使用しています。
       'react-hooks/refs': 'off',
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/use-memo': 'off',

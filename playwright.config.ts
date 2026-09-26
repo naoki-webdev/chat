@@ -3,8 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   testIgnore: 'postgres.spec.ts',
-  // The E2E backend is intentionally shared and uses an in-memory store.
-  // Keep spec execution sequentially until each worker gets an isolated database.
+  // E2E用バックエンドは意図的に共有し、インメモリストアを使います。
+  // 各ワーカーに分離したデータベースを割り当てるまでは、テストを順番に実行します。
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

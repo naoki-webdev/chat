@@ -95,14 +95,18 @@ func TestOpenAIServiceParsesSSEStream(t *testing.T) {
 			t.Errorf("authorization header = %q", request.Header.Get("Authorization"))
 		}
 		var payload struct {
-			Model  string `json:"model"`
-			Stream bool   `json:"stream"`
+			Model    string        `json:"model"`
+			Stream   bool          `json:"stream"`
+			Messages []chatMessage `json:"messages"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatal(err)
 		}
 		if payload.Model != "test-model" || !payload.Stream {
 			t.Errorf("unexpected request payload: %+v", payload)
+		}
+		if payload.Messages[1].Role != "user" {
+			t.Errorf("display name incorrectly set assistant role: %+v", payload.Messages[1])
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"))
@@ -113,7 +117,7 @@ func TestOpenAIServiceParsesSSEStream(t *testing.T) {
 
 	service := &openAIService{apiKey: "test-key", model: "test-model", baseURL: provider.URL, client: provider.Client()}
 	var chunks []string
-	response, err := service.Stream(context.Background(), []Message{{Author: "Taro", Body: "Hi"}}, "続けて", func(delta string) error {
+	response, err := service.Stream(context.Background(), []Message{{Author: "Orbit AI", Body: "Hi"}}, "続けて", func(delta string) error {
 		chunks = append(chunks, delta)
 		return nil
 	})
@@ -122,5 +126,39 @@ func TestOpenAIServiceParsesSSEStream(t *testing.T) {
 	}
 	if response != "Hello Orbit" || strings.Join(chunks, "") != response {
 		t.Fatalf("unexpected streamed response: %q / %#v", response, chunks)
+	}
+}
+
+func TestOpenAIServiceRejectsStreamWithoutCompletion(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"))
+	}))
+	defer provider.Close()
+
+	service := &openAIService{apiKey: "test-key", model: "test-model", baseURL: provider.URL, client: provider.Client()}
+	response, err := service.Stream(context.Background(), nil, "prompt", func(string) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "before completion") {
+		t.Fatalf("expected incomplete stream error, got %q / %v", response, err)
+	}
+}
+
+func TestOpenAIServiceUsesAssistantIdentityFromMetadata(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var payload chatRequest
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Messages[1].Role != "assistant" {
+			t.Errorf("assistant message role = %q", payload.Messages[1].Role)
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\n"))
+	}))
+	defer provider.Close()
+
+	service := &openAIService{apiKey: "test-key", model: "test-model", baseURL: provider.URL, client: provider.Client()}
+	if _, err := service.Stream(context.Background(), []Message{{Author: "Renamed User", Body: "answer", IsAssistant: true}}, "prompt", func(string) error { return nil }); err != nil {
+		t.Fatal(err)
 	}
 }

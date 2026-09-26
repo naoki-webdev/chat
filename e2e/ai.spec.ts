@@ -46,7 +46,7 @@ test('does not apply a stale summary after switching channels', async ({ page })
         }),
       })
     } catch {
-      // The request may have been aborted when the channel changed.
+      // チャンネル切り替え時にリクエストが中断される場合があります。
     }
   })
 

@@ -18,7 +18,18 @@ func (s *server) handleChannels(writer http.ResponseWriter, request *http.Reques
 			writeRepositoryError(writer, err)
 			return
 		}
-		writeJSON(writer, http.StatusOK, map[string]any{"channels": channels, "cursor": cursor})
+		groups := []string{"Engineering", "Product"}
+		seenGroups := map[string]struct{}{groups[0]: {}, groups[1]: {}}
+		for _, channel := range channels {
+			if channel.Kind != "channel" || channel.Group == "" || channel.Group == "Direct messages" {
+				continue
+			}
+			if _, seen := seenGroups[channel.Group]; !seen {
+				groups = append(groups, channel.Group)
+				seenGroups[channel.Group] = struct{}{}
+			}
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{"channels": channels, "cursor": cursor, "groups": groups})
 	case http.MethodPost:
 		var payload channelRequest
 		if !decodeJSON(writer, request, &payload) {

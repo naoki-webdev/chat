@@ -17,18 +17,18 @@ const (
 	postgresListenerRetryDelay      = time.Second
 )
 
-// postgresRealtimeNotification keeps NOTIFY payloads small. Persisted events
-// are identified by sequence and loaded from chat_events. Ephemeral events
-// such as typing and presence are carried directly because they have no
-// durable row to replay.
+// postgresRealtimeNotificationはNOTIFYのペイロードを小さく保ちます。永続化イベントは
+// シーケンスで識別してchat_eventsから読み込みます。入力中や在席状態などの一時イベントは、
+// 再生できる永続行を持たないため、そのまま送信します。
 type postgresRealtimeNotification struct {
 	Sequence  int64          `json:"sequence,omitempty"`
 	Type      string         `json:"type,omitempty"`
 	MessageID string         `json:"message_id,omitempty"`
 	Event     *realtimeEvent `json:"event,omitempty"`
+	SessionToken string      `json:"session_token,omitempty"`
 }
 
-func (r *postgresRepository) startEventListener(handler func(realtimeEvent)) error {
+func (r *postgresRepository) startEventListener(handler func(realtimeEvent), sessionHandlers ...func(string)) error {
 	r.listenerMu.Lock()
 	if r.listenerDone != nil {
 		readyContext, cancel := context.WithTimeout(context.Background(), realtimeRepositoryTimeout)
@@ -43,7 +43,11 @@ func (r *postgresRepository) startEventListener(handler func(realtimeEvent)) err
 	r.listenerReady = make(chan struct{})
 	ready := r.listenerReady
 	r.listenerMu.Unlock()
-	go r.eventListenerLoop(listenerContext, handler)
+	var sessionHandler func(string)
+	if len(sessionHandlers) > 0 {
+		sessionHandler = sessionHandlers[0]
+	}
+	go r.eventListenerLoop(listenerContext, handler, sessionHandler)
 
 	readyContext, readyCancel := context.WithTimeout(context.Background(), realtimeRepositoryTimeout)
 	defer readyCancel()
@@ -69,7 +73,7 @@ func (r *postgresRepository) waitForEventListener(ctx context.Context) error {
 	return waitForEventListenerChannel(ctx, ready)
 }
 
-func (r *postgresRepository) eventListenerLoop(ctx context.Context, handler func(realtimeEvent)) {
+func (r *postgresRepository) eventListenerLoop(ctx context.Context, handler func(realtimeEvent), sessionHandler func(string)) {
 	defer close(r.listenerDone)
 	var lastSequence int64
 	initialized := false
@@ -122,6 +126,12 @@ func (r *postgresRepository) eventListenerLoop(ctx context.Context, handler func
 				log.Printf("ignoring invalid realtime notification: %v", decodeErr)
 				continue
 			}
+			if notice.SessionToken != "" {
+				if sessionHandler != nil {
+					sessionHandler(notice.SessionToken)
+				}
+				continue
+			}
 			if notice.Event != nil {
 				handler(*notice.Event)
 				continue
@@ -130,9 +140,8 @@ func (r *postgresRepository) eventListenerLoop(ctx context.Context, handler func
 				continue
 			}
 
-			// AI completion carries the temporary client-side message ID. It
-			// shares the persisted sequence with message.created, so it must be
-			// delivered even after the base event has advanced lastSequence.
+			// AI完了イベントはクライアント側の一時メッセージIDを持ちます。
+			// message.createdと永続化シーケンスを共有するため、基底イベントがlastSequenceを進めた後も配信する必要があります。
 			if notice.Type != "" {
 				event, eventErr := r.eventBySequence(ctx, notice.Sequence)
 				if eventErr != nil {
@@ -258,7 +267,7 @@ func decodePostgresRealtimeNotification(payload string) (postgresRealtimeNotific
 	if err := json.Unmarshal([]byte(payload), &notification); err != nil {
 		return postgresRealtimeNotification{}, err
 	}
-	if notification.Sequence <= 0 && notification.Event == nil {
+	if notification.Sequence <= 0 && notification.Event == nil && notification.SessionToken == "" {
 		return postgresRealtimeNotification{}, errors.New("notification has no event or sequence")
 	}
 	return notification, nil
@@ -274,6 +283,14 @@ func (r *postgresRepository) publishEphemeral(event realtimeEvent) error {
 
 func (r *postgresRepository) publishAICompleted(event realtimeEvent) error {
 	payload, err := json.Marshal(postgresRealtimeNotification{Sequence: event.Sequence, Type: event.Type, MessageID: event.MessageID})
+	if err != nil {
+		return err
+	}
+	return r.publishNotification(payload)
+}
+
+func (r *postgresRepository) publishSessionRevocation(token string) error {
+	payload, err := json.Marshal(postgresRealtimeNotification{SessionToken: token})
 	if err != nil {
 		return err
 	}

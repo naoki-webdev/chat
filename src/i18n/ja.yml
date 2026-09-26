@@ -77,6 +77,8 @@ chat:
   cancel: キャンセル
   saveEdit: 編集を保存
   send: 送信
+  messageSending: メッセージを送信しています…
+  retryMessage: 再送
 details:
   close: 詳細を閉じる
   directDescription: 個別の会話
@@ -169,6 +171,8 @@ errors:
   replySend: 返信の送信に失敗しました。
   threadLoad: スレッドを読み込めませんでした。
   messageSend: メッセージの送信に失敗しました。
+  logout: ログアウトに失敗しました。接続を確認してもう一度お試しください。
+  savedMessageMissing: 保存したメッセージを読み込めませんでした。
   messageEdit: メッセージの編集に失敗しました。
   messageDelete: メッセージの削除に失敗しました。
   reactionUpdate: リアクションの更新に失敗しました。

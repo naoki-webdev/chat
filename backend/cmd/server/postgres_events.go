@@ -71,9 +71,9 @@ type rowScannerSource interface {
 }
 
 func appendEventTx(ctx context.Context, transaction pgx.Tx, event realtimeEvent) (EventRecord, error) {
-	// BIGSERIAL values are allocated before commit. Serialize event allocation so
-	// a later transaction cannot commit with a larger sequence first and make an
-	// earlier committed event invisible to reconnecting clients.
+	// BIGSERIALの値はコミット前に割り当てられます。イベントの割り当てを直列化し、
+	// 後のトランザクションが大きいシーケンスを先にコミットして、
+	// 先にコミット済みのイベントを再接続クライアントから見えなくすることを防ぎます。
 	if _, err := transaction.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, realtimeEventSequenceLockID); err != nil {
 		return EventRecord{}, err
 	}

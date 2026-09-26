@@ -105,7 +105,7 @@ export type EventPage = {
   cursor: number
 }
 
-export type ChannelResponse = { channels: ApiChannel[]; cursor: number }
+export type ChannelResponse = { channels: ApiChannel[]; cursor: number; groups?: string[] }
 type MemberResponse = { users: ApiMember[] }
 type ChannelMemberResponse = { members: ApiChannelMember[] }
 type UserResponse = { user: ApiUser }
@@ -150,7 +150,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (parsed.code) code = parsed.code
       requestId = parsed.request_id
     } catch {
-      // Keep the raw response when the API does not return JSON.
+      // APIがJSONを返さない場合は、元のレスポンスを保持します。
     }
     throw new ChatApiError(response.status, message, code, requestId)
   }
@@ -321,7 +321,7 @@ export function createChatSocket(channelId: string, handlers: SocketHandlers) {
       try {
         handlers.onEvent(JSON.parse(event.data) as RealtimeEvent)
       } catch {
-        // Ignore malformed events and keep the connection alive.
+      // 不正なイベントは無視し、接続を維持します。
       }
     }
     nextSocket.onerror = () => nextSocket.close()

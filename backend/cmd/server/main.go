@@ -55,7 +55,7 @@ func newServerWithRepositoryAndAI(repository repository, service ai.Service) *se
 		},
 	}
 	if postgres, ok := repository.(*postgresRepository); ok {
-		if err := postgres.startEventListener(application.broadcastLocal); err != nil {
+		if err := postgres.startEventListener(application.broadcastLocal, application.hub.disconnectSession); err != nil {
 			log.Printf("postgres event listener did not become ready: %v", err)
 		}
 	}

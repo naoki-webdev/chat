@@ -16,6 +16,7 @@ type Props = {
   messages: Record<string, Message[]>
   savedMessages: SavedMessageRef[]
   onSelectChannel: (channel: Channel) => void
+  onOpenSavedMessage: (channel: Channel, messageId: string) => void
   onOpenThread: (channel: Channel, message: Message) => void
   onClose: () => void
   memberCount?: number
@@ -23,7 +24,7 @@ type Props = {
   threadItems?: Array<{ channelId: string; message: Message }>
 }
 
-export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSelectChannel, onOpenThread, onClose, memberCount, connection, threadItems: loadedThreadItems }: Props) {
+export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSelectChannel, onOpenSavedMessage, onOpenThread, onClose, memberCount, connection, threadItems: loadedThreadItems }: Props) {
   const groupLabel = (group: string) => t(`sidebar.groups.${group}`)
   const [query, setQuery] = useState('')
   const channelById = useMemo(() => new Map(channels.map((channel) => [channel.id, channel])), [channels])
@@ -72,7 +73,7 @@ export function WorkspaceOverlay({ kind, channels, messages, savedMessages, onSe
         </>}
 
         {kind === 'saved' && <>
-          <div className="workspace-result-list">{savedItems.length === 0 && <div className="workspace-overlay-empty"><Icon name="bookmark" size={20} /><span>{t('overlay.noSaved')}</span></div>}{savedItems.map(({ reference, channel, message }) => <button className="workspace-result workspace-result-message" key={`${reference.channelId}:${reference.messageId}`} disabled={!channel} onClick={() => channel && select(channel)}><span className="workspace-result-icon"><Icon name="bookmark" size={16} /></span><span><strong>{channel?.name ?? t('overlay.unknownChannel')}</strong><small>{message?.body ?? t('overlay.savedNotLoaded')}</small></span><time>{message?.time}</time></button>)}</div>
+          <div className="workspace-result-list">{savedItems.length === 0 && <div className="workspace-overlay-empty"><Icon name="bookmark" size={20} /><span>{t('overlay.noSaved')}</span></div>}{savedItems.map(({ reference, channel, message }) => <button className="workspace-result workspace-result-message" key={`${reference.channelId}:${reference.messageId}`} disabled={!channel} onClick={() => channel && onOpenSavedMessage(channel, reference.messageId)}><span className="workspace-result-icon"><Icon name="bookmark" size={16} /></span><span><strong>{channel?.name ?? t('overlay.unknownChannel')}</strong><small>{message?.body ?? t('overlay.savedNotLoaded')}</small></span><time>{message?.time}</time></button>)}</div>
         </>}
 
         {kind === 'threads' && <>

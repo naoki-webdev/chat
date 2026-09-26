@@ -14,11 +14,12 @@ import (
 	"time"
 )
 
-// Message is the small conversation shape Orbit AI needs. Keeping this
-// separate from the HTTP/domain packages makes the provider replaceable.
+// MessageはOrbit AIが必要とする最小限の会話データです。
+// HTTP層やドメイン層から分離することで、プロバイダーを差し替えられるようにします。
 type Message struct {
-	Author string
-	Body   string
+	Author      string
+	Body        string
+	IsAssistant bool
 }
 
 type Service interface {
@@ -48,9 +49,9 @@ func NewFromEnv() Service {
 	}
 }
 
-// ValidateProductionConfig rejects the silent mock fallback when the server
-// is running outside an explicitly local/test environment. Mock is valid only
-// when the operator opts into it with AI_PROVIDER=mock.
+// ValidateProductionConfigは、明示的にローカルまたはテスト環境と指定されていない状態で、
+// サーバーが暗黙にモックへフォールバックすることを拒否します。モックを使えるのは、
+// オペレーターがAI_PROVIDER=mockを明示した場合だけです。
 func ValidateProductionConfig() error {
 	explicitProvider := strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER")))
 	if explicitProvider == "mock" {
@@ -240,6 +241,7 @@ type streamChunk struct {
 		Delta struct {
 			Content string `json:"content"`
 		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 }
 
@@ -254,7 +256,7 @@ func (s *openAIService) Stream(ctx context.Context, history []Message, prompt st
 			continue
 		}
 		role := "user"
-		if message.Author == "Orbit AI" {
+		if message.IsAssistant {
 			role = "assistant"
 		}
 		conversation = append(conversation, chatMessage{Role: role, Content: message.Author + ": " + body})
@@ -282,6 +284,7 @@ func (s *openAIService) Stream(ctx context.Context, history []Message, prompt st
 	}
 
 	var builder strings.Builder
+	completed := false
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 1024), 1<<20)
 	for scanner.Scan() {
@@ -291,16 +294,27 @@ func (s *openAIService) Stream(ctx context.Context, history []Message, prompt st
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if data == "[DONE]" {
+			completed = true
 			break
 		}
 		var chunk streamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			return builder.String(), err
 		}
-		if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
+		if len(chunk.Choices) == 0 {
 			continue
 		}
-		delta := chunk.Choices[0].Delta.Content
+		choice := chunk.Choices[0]
+		if choice.FinishReason != "" {
+			if choice.FinishReason != "stop" {
+				return builder.String(), fmt.Errorf("AI provider ended the response with finish reason %q", choice.FinishReason)
+			}
+			completed = true
+		}
+		if choice.Delta.Content == "" {
+			continue
+		}
+		delta := choice.Delta.Content
 		if err := onDelta(delta); err != nil {
 			return builder.String(), err
 		}
@@ -308,6 +322,9 @@ func (s *openAIService) Stream(ctx context.Context, history []Message, prompt st
 	}
 	if err := scanner.Err(); err != nil {
 		return builder.String(), err
+	}
+	if !completed {
+		return builder.String(), errors.New("AI provider stream ended before completion")
 	}
 	if builder.Len() == 0 {
 		return "", errors.New("AI provider returned an empty response")

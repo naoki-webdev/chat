@@ -56,11 +56,11 @@ WebSocketは、同じチャンネルに接続しているクライアントへ�
 }
 ```
 
-`DATABASE_URL`を指定すると、`cmd/server/migrations`のversioned SQL migrationを未適用分だけ実行し、ユーザー、HttpOnly Cookieセッション、チャンネル、メッセージを保存します。期限切れのセッションは起動時と1時間ごとに削除します。開発環境では未指定時にインメモリストアへフォールバックしますが、`APP_ENV=production`（または `prod`）では`DATABASE_URL`、`FRONTEND_ORIGIN`、`COOKIE_SECURE=true`が必須です。ログイン・登録にはIPアドレスとメールアドレスを組み合わせたレート制限があります。AI呼び出しには同時実行・最短間隔に加えて、PostgreSQLで共有するユーザー単位の日次上限（`AI_DAILY_REQUEST_LIMIT`、既定100）があります。
+`DATABASE_URL`を指定すると、`cmd/server/migrations`の未適用のversioned SQL migrationを実行します。実行後は、ユーザー、HttpOnly Cookieセッション、チャンネル、メッセージを保存します。期限切れのセッションは起動時と1時間ごとに削除します。開発環境では`DATABASE_URL`を指定しない場合、インメモリストアへフォールバックします。一方、`APP_ENV=production`（または `prod`）では、`DATABASE_URL`、`FRONTEND_ORIGIN`、`COOKIE_SECURE=true`が必須です。ログイン・登録には、IPアドレスとメールアドレスを組み合わせたレート制限があります。AI呼び出しには、同時実行数と最短間隔の制限に加えて、PostgreSQLで共有するユーザー単位の日次上限（`AI_DAILY_REQUEST_LIMIT`、既定100）があります。
 
 リバースプロキシ配下で信頼できる`X-Forwarded-For` / `X-Real-IP`を使う場合だけ、`TRUST_PROXY_HEADERS=true`を設定します。その場合は、バックエンドへ直接接続するプロキシの`TRUSTED_PROXY_CIDRS`と、信頼するプロキシの段数`TRUSTED_PROXY_HOPS`も設定します。X-Forwarded-Forは右側から指定した段数だけたどってクライアントIPを選ぶため、先頭の値を無条件には信用しません。設定がない・不正な場合は本番起動を拒否し、既定ではこれらのヘッダーを信用せずTCP接続元をレート制限のIPとして使います。
 
-チャンネルは`channel_members`でアクセス制御します。既定の公開チャンネル（`general`、`frontend`、`design-system`、`roadmap`、`research`）には登録時に参加しますが、ユーザーが作成したチャンネルは作成者とOrbit AIだけが初期メンバーです。新規ユーザーを既存の全チャンネルへ自動参加させることはありません。メッセージ履歴、スレッド、リアクション、イベント差分、チャンネル別WebSocket購読はmembershipを確認してから返します。
+チャンネルは`channel_members`でアクセス制御します。ユーザーは登録時に、既定の公開チャンネル（`general`、`frontend`、`design-system`、`roadmap`、`research`）へ参加します。ユーザーが作成したチャンネルの初期メンバーは、作成者とOrbit AIだけです。新規ユーザーを既存のすべてのチャンネルへ自動参加させることはありません。メッセージ関連のデータはmembershipを確認してから返します。チャンネル別WebSocket購読も同じ条件で扱います。
 
 WebSocket broadcastでは、イベントごとにチャンネルのmembership snapshotを1回取得し、Hub内で接続ユーザーを照合します。接続クライアント数に比例したDB問い合わせは発生しません。
 

@@ -34,7 +34,7 @@ function event(overrides: Partial<RealtimeEvent> = {}): RealtimeEvent {
   }
 }
 
-function createHarness(selectedChannel = 'current-channel') {
+function createHarness(selectedChannel = 'current-channel', isSessionActive = () => true) {
   let channels: Channel[] = [{ id: 'other-channel', name: 'other', group: 'Engineering', kind: 'channel', unread: 0 }]
   let messages: MessageMap = {}
   let typingUsers: TypingUsers = {}
@@ -48,6 +48,7 @@ function createHarness(selectedChannel = 'current-channel') {
   const eventCursorRef = ref(0)
   const handler = createRealtimeEventHandler({
     currentUserID: 'u-me',
+    isSessionActive,
     setAuthUser: vi.fn() as Dispatch<SetStateAction<ApiUser | null>>,
     eventCursorRef,
     selectedChannelRef: ref(selectedChannel),
@@ -68,6 +69,17 @@ function createHarness(selectedChannel = 'current-channel') {
 }
 
 describe('createRealtimeEventHandler', () => {
+  it('ignores events from a previous authenticated session', async () => {
+    let active = true
+    const harness = createHarness('current-channel', () => active)
+
+    active = false
+    await harness.handler(event())
+
+    expect(harness.getMessages()).toEqual({})
+    expect(harness.getChannels()[0]?.unread).toBe(0)
+  })
+
   it.each(['message.created', 'message.updated', 'message.deleted'] as const)('retires a delayed AI placeholder after %s without reverting the newer event', async (type) => {
     const harness = createHarness()
     const finalMessage = { ...event().message!, id: 'ai-final', author_id: 'orbit-ai', body: 'original' }

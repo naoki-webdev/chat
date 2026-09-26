@@ -27,7 +27,7 @@ const (
 	sessionCleanupQueryTimeout = 5 * time.Second
 )
 
-// migrationFS keeps the schema versioned and deployable with the server binary.
+// migrationFSはスキーマをバージョン管理し、サーバーバイナリと一緒にデプロイできるようにします。
 //
 //go:embed migrations/*.sql
 var migrationFS embed.FS
